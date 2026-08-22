@@ -12,6 +12,7 @@
 (function () {
   'use strict';
   var VT = window.VT, U = VT.util, el = U.el, SRD = VT.srd, CV = VT.convert, FT = VT.fivetools;
+  var SHOPS = VT.shops;                 // shared loot-code format with Tale Shop
 
   var SKILLS = VT.tags.SKILL_ABILITY;   // 18 skills -> governing ability
   var STANDARD_ARRAY = [15, 14, 13, 12, 10, 8];
@@ -1815,6 +1816,45 @@
     inv.appendChild(el('p', { class: 'muted' }, [
       'Somewhere to keep what you buy in Tale Shop. Carried through level-ups.'
     ]));
+
+    /* Collecting from Tale Shop. TaleSpire only lets two symbiotes talk when
+       both carry a matching interop id, and a manifest declaring one is not
+       always accepted - so the shop writes a short code instead and this reads
+       it. Paste, check what it says, take it. */
+    var pasted = '';
+    var pasteReport = el('div', { class: 'muted' });
+    var takeBtn = el('button', { class: 'btn sm primary', disabled: true }, ['Collect']);
+    var pasteIn = el('textarea', {
+      class: 'lootcode', rows: 2,
+      placeholder: 'Paste a code from Tale Shop here',
+      onInput: function (e) {
+        pasted = e.target.value;
+        var got = SHOPS.parseLootCode(pasted);
+        takeBtn.disabled = !got;
+        if (!pasted.trim()) { pasteReport.textContent = ''; pasteReport.className = 'muted'; return; }
+        if (!got) {
+          pasteReport.textContent = 'That does not look like a Tale Shop code.';
+          pasteReport.className = 'warn';
+          return;
+        }
+        pasteReport.textContent = 'Ready to collect: ' + SHOPS.describeLoot(got, VT.coin.system()) +
+          (got.from ? ' — from ' + got.from : '');
+        pasteReport.className = 'muted';
+      }
+    });
+    takeBtn.addEventListener('click', function () {
+      var got = SHOPS.parseLootCode(pasted);
+      if (!got) { toast('Nothing readable in that code', 'err'); return; }
+      acceptGrant({ items: got.items, coins: got.coins, from: got.from || 'Tale Shop' });
+      pasteIn.value = ''; pasted = '';
+      takeBtn.disabled = true;
+      pasteReport.textContent = '';
+    });
+    inv.appendChild(el('h3', { style: { marginTop: '14px' } }, ['Collect from Tale Shop']));
+    inv.appendChild(pasteIn);
+    inv.appendChild(el('div', { class: 'btnrow' }, [takeBtn]));
+    inv.appendChild(pasteReport);
+
     view.appendChild(inv);
 
     /* --- actions --- */
@@ -1987,10 +2027,6 @@
      Deliberately a mirror, not a remote control: the player's copy stays the
      authority, so nothing desynchronises if someone closes the panel. */
   var PROTO = 'vt1';
-  /* Tale Shop speaks its own protocol on the same board. Its grant messages are
-     the one kind we care about here: an item or a purse handed to this player.
-     Everything else it says is between the GM and the shop. */
-  var SHOP_PROTO = 'vtshop1';
 
   function initClientRole() {
     if (!TS.clients || !TS.clients.whoAmI) return Promise.resolve();
@@ -2049,19 +2085,10 @@
     var from = evt.payload.fromClient && evt.payload.fromClient.id;
     var msg;
     try { msg = JSON.parse(evt.payload.str); } catch (e) { return; }
-    if (!msg || (msg.p !== PROTO && msg.p !== SHOP_PROTO)) return;
-    if (msg.p === SHOP_PROTO && msg.t !== 'grant') return;
+    if (!msg || msg.p !== PROTO) return;
 
     TS.clients.isMe(from).then(function (isMe) {
       if (isMe) return;                       // broadcasts come back to us too
-
-      /* Tale Shop hands an item or a purse straight over. The two symbiotes
-         share an interop id, which is what lets one reach the other. */
-      if (msg.t === 'grant') {
-        if (msg.to && msg.to !== S.myClientId) return;
-        acceptGrant(msg);
-        return;
-      }
 
       if (msg.t === 'sheet' && S.isGM) {
         S.table[from] = { sheet: msg.sheet, name: msg.name, at: Date.now() };
@@ -2115,7 +2142,7 @@
     notifyIfHidden('From the GM', msg.label || msg.cmd);
   }
 
-  /* Put granted goods into the active character. Nothing here is destructive:
+  /* Put loot into the active character. Nothing here is destructive:
      items stack into the inventory and coin is added to the purse. */
   function acceptGrant(msg) {
     var a = active();

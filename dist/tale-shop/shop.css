@@ -250,3 +250,10 @@ details > div { padding: 0 8px 8px; }
 .coinbox { display: flex; flex-direction: column; gap: 2px; align-items: center; }
 .coinbox .sub { font-size: 9px; text-transform: uppercase; letter-spacing: .06em; opacity: .7; }
 .coinbox input { width: 62px; text-align: center; }
+
+/* ---- loot codes handed to a player ---- */
+.lootbox { margin: 6px 0 10px; }
+.lootcode {
+  width: 100%; font-family: var(--mono, monospace); font-size: 10px;
+  line-height: 1.35; resize: vertical; word-break: break-all;
+}

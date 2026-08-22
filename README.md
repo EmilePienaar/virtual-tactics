@@ -14,7 +14,7 @@ and nothing phones home.
 | | What it is | Where |
 | --- | --- | --- |
 | **Tale Sheet** | Your character sheet, inside TaleSpire. Rolls go through the real dice tray. | TaleSpire symbiote |
-| **Tale Shop** | The GM's shop window and treasure hoards. Items go straight into your sheet. | TaleSpire symbiote |
+| **Tale Shop** | The GM's shop window and treasure hoards. Hands you a code you paste into your sheet. | TaleSpire symbiote |
 | **The Forge** | Build and level characters in a browser, then send them to your sheet. | `dist/the-forge.html` |
 
 There are two extras you can ignore unless you want them: an isometric battle map
@@ -112,11 +112,15 @@ tagline; it draws its own picture based on what it's worth, from a skull and a
 spilled purse up to a dragon's bed.
 
 Loose coin can be **split between the party** — set how many ways and press *Hand
-it out*, and each share lands in a player's purse. Nothing is lost to rounding.
+it out*. Each share becomes its own code: anyone with Tale Shop open gets theirs
+on the Purchases tab, and every share is listed for you to copy and paste into
+chat for whoever isn't looking. Nothing is lost to rounding.
 
 **Players:** the open shop appears on its own. Browse, pick a quantity, and press
-**Buy** (or **Take**, in a hoard). What you take goes **straight into your Tale
-Sheet inventory** and your purse — no copying by hand.
+**Buy** (or **Take**, in a hoard). What you took comes back as a short code on the
+**Purchases** tab — press **Copy**, then paste it into Tale Sheet under
+*Inventory → Collect from Tale Shop*. Items and coin go to the right places, and
+the code can be pasted into chat if someone missed it.
 
 Stock lives on the GM's copy, so two people can't both take the last potion.
 
@@ -159,8 +163,13 @@ the symbiote's folder as in step 3.)
 **"The symbiote doesn't appear in TaleSpire."** Check the folder went in whole —
 `Symbiotes\tale-sheet\manifest.json` should exist — and restart TaleSpire.
 
-**"Nothing arrives in my sheet when I take an item."** Both symbiotes need to be
-open, and everyone needs to be on the same version. Re-copy both folders together.
+**"Nothing arrives in my sheet when I take an item."** Nothing is sent directly —
+copy the code from Tale Shop's **Purchases** tab and paste it into Tale Sheet
+under *Inventory → Collect from Tale Shop*.
+
+**"TaleSpire refuses to load the symbiote."** Make sure you are on the current
+build. An older one declared a cross-symbiote interop id that TaleSpire does not
+always accept, and it would refuse the whole symbiote because of it.
 
 ---
 

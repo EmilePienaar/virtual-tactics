@@ -184,3 +184,14 @@ details > div { padding: 0 8px 8px; }
         padding: 7px 9px; border-radius: 5px; font-size: 11.5px; margin-bottom: 8px; }
 
 .pip.exp { background: var(--gold); border-color: var(--gold); box-shadow: 0 0 0 2px rgba(216,178,92,.35); }
+
+/* ---- loot codes copied over from Tale Shop ---- */
+.lootcode {
+  width: 100%; font-family: var(--mono, monospace); font-size: 10px;
+  line-height: 1.35; resize: vertical; word-break: break-all;
+}
+
+/* A number box in a rollable row must not eat the label. Inputs are width:100%
+   by default, which inside a flex row resolves to "all of it" and squeezes the
+   item name to nothing. */
+.rollrow input[type=number] { width: 58px; text-align: center; flex: none; }

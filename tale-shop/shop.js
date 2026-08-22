@@ -108,14 +108,19 @@
       S.shops = (Array.isArray(d.shops) ? d.shops : []).map(SHOPS.normalise);
       S.openShopId = d.openShopId || null;
       S.currency = d.currency || null;
-      S.receipts = Array.isArray(d.receipts) ? d.receipts : [];
+      /* Receipts used to be plain strings; keep old ones readable. */
+      S.receipts = (Array.isArray(d.receipts) ? d.receipts : []).map(function (r) {
+        return typeof r === 'string' ? { text: r } : r;
+      });
+      S.splitCodes = d.splitCodes || null;
     }).catch(function () {});
   }
 
   var saveSoon = U.debounce(function () {
     TS.localStorage.campaign.setBlob(JSON.stringify({
       v: 1, shops: S.shops, openShopId: S.openShopId,
-      currency: S.currency, receipts: S.receipts.slice(-40)
+      currency: S.currency, receipts: S.receipts.slice(-40),
+      splitCodes: S.splitCodes
     })).catch(function (e) { toast('Could not save: ' + (e && e.cause || e), 'err'); });
   }, 400);
   function save() { saveSoon(); }
@@ -195,7 +200,7 @@
       if (msg.t === 'poll' && S.isGM) { broadcastOpenShop(); return; }
       if (msg.t === 'buy' && S.isGM) { handlePurchase(msg, from); return; }
       if (msg.t === 'receipt' && !S.isGM && msg.to === S.myClientId) {
-        S.receipts.push(msg.text);
+        S.receipts.push({ text: msg.text, loot: msg.loot || null, at: Date.now() });
         save(); render();
         toast(msg.text, 'ok');
       }
@@ -222,7 +227,9 @@
       var taken = U.clone(shop.coins);
       shop.coins = {};
       save(); broadcastOpenShop(); render();
-      syncSend({ p: PROTO, t: 'grant', to: fromClient, coins: taken, from: shop.name });
+      syncSend({ p: PROTO, t: 'receipt', to: fromClient,
+                 text: 'Took the coin from ' + shop.name,
+                 loot: SHOPS.lootCode({ from: shop.name, coins: taken }) });
       var cline = (msg.buyer || 'A player') + ' took the coin: ' +
         Object.keys(taken).map(function (k) { return taken[k] + ' ' + k; }).join(', ');
       toast(cline, 'ok');
@@ -245,20 +252,19 @@
     var line = (msg.buyer || 'A player') + verb + want + ' × ' + good.name +
                (shop.free ? '' : ' for ' + COIN.format(total, sys()));
 
-    /* Hand the item straight to their sheet. Tale Sheet and Tale Shop share an
-       interop id, so a message from one reaches the other, and the sheet puts
-       it in the character's inventory. If nothing is listening the receipt
-       still tells the player what they got. */
-    syncSend({ p: PROTO, t: 'grant', to: fromClient,
-               items: [{ name: good.name, qty: want, note: good.note || '',
-                         source: good.source || null }],
-               from: shop.name });
     save();
     broadcastOpenShop();
     render();
     toast(line, 'ok');
+
+    /* The receipt carries a loot code the buyer copies into Tale Sheet. Sent
+       within Tale Shop, so it needs nothing of the sheet at all. */
     syncSend({ p: PROTO, t: 'receipt', to: fromClient,
-               text: 'Bought ' + want + ' × ' + good.name + ' — pay ' + COIN.format(total, sys()) });
+               text: shop.free
+                 ? 'Took ' + want + ' × ' + good.name
+                 : 'Bought ' + want + ' × ' + good.name + ' — pay ' + COIN.format(total, sys()),
+               loot: SHOPS.lootCode({ from: shop.name,
+                 items: [{ name: good.name, qty: want, note: good.note || '' }] }) });
     postChat(line);
   }
 
@@ -503,44 +509,77 @@
     ]));
     card.appendChild(preview);
     card.appendChild(el('p', { class: 'muted' }, [
-      'Splitting sends each player their share straight to their Tale Sheet purse. ' +
-      'Anyone not running the sheet is listed so you can hand it over yourself.'
+      'Each share becomes a code the player pastes into Tale Sheet. Anyone with ' +
+      'Tale Shop open gets theirs automatically; the rest you copy and hand over.'
     ]));
+
+    /* whatever the last split produced, still here to copy */
+    var sc = S.splitCodes;
+    if (sc && sc.shopId === shop.id && sc.codes && sc.codes.length) {
+      var done = el('div', { class: 'card' }, [
+        el('h3', {}, ['Shares to hand out']),
+        el('div', { class: 'muted' }, [
+          'From ' + sc.from + '. These stay here until you clear them, so nothing ' +
+          'is lost if you close the panel.'
+        ])
+      ]);
+      sc.codes.forEach(function (c) {
+        done.appendChild(copyBox(c.code,
+          'Share ' + c.n + ' — ' + c.label + (c.sentTo ? ' (sent to the panel)' : '')));
+      });
+      done.appendChild(el('div', { class: 'btnrow' }, [
+        el('button', { class: 'btn sm danger', onClick: function () {
+          S.splitCodes = null; save(); render();
+        } }, ['Clear'])
+      ]));
+      card.appendChild(done);
+    }
     return card;
   }
 
-  /* Divide the coin and send each present player their share. */
+  /* Divide the coin into shares and turn each into a loot code. Anyone in Tale
+     Shop gets theirs as a receipt straight away; every share is also listed for
+     the GM to copy, so a player who is not looking at the panel can be handed
+     one in chat instead. */
   function splitToParty(shop, ways) {
     var r = VT.shops.splitCoins(shop.coins || {}, ways, sys());
     if (!r.total) { toast('No coin to split', 'err'); return; }
+
+    var codes = r.shares.map(function (share, i) {
+      return { n: i + 1,
+               label: COIN.format(share.base, sys()),
+               code: SHOPS.lootCode({ from: shop.name, coins: share.purse }) };
+    });
 
     TS.clients.getClientsInThisBoard().then(function (all) {
       var others = (all || []).map(function (c) { return c.id || c; })
         .filter(function (id) { return id !== S.myClientId; });
 
-      var sent = 0, handed = 0;
-      r.shares.forEach(function (share, i) {
+      var sent = 0;
+      codes.forEach(function (c, i) {
         var to = others[i];
         if (!to) return;
-        syncSend({ p: PROTO, t: 'grant', to: to, coins: share.purse, from: shop.name });
-        sent++; handed += share.base;
+        c.sentTo = to;
+        syncSend({ p: PROTO, t: 'receipt', to: to,
+                   text: 'Your share of ' + shop.name + ' — ' + c.label,
+                   loot: c.code });
+        sent++;
       });
+      finish(sent);
+    }).catch(function () { finish(0); });
 
-      /* Only take out what actually reached somebody. A share with nobody to
-         send it to stays in the hoard, so it is still there to hand over by
-         hand rather than quietly disappearing. */
-      shop.coins = COIN.fromBase(r.total - handed, sys());
+    function finish(sent) {
+      shop.coins = {};
+      S.splitCodes = { shopId: shop.id, from: shop.name, at: Date.now(), codes: codes };
       save(); broadcastOpenShop(); render();
 
-      var line = 'Split ' + COIN.format(handed, sys()) + ' between ' + sent +
-                 (sent === 1 ? ' player — ' : ' players — ') +
+      var line = 'Split ' + COIN.format(r.total, sys()) + ' ' + ways + ' ways  —  ' +
                  COIN.format(r.each, sys()) + ' each';
-      toast(sent < ways
-        ? line + '. Only ' + sent + ' of ' + ways + ' are at the table; the other ' +
-          COIN.format(r.total - handed, sys()) + ' is still in the hoard.'
-        : line, sent ? 'ok' : 'err');
-      if (sent) postChat(line);
-    }).catch(function () { toast('Could not see who is here', 'err'); });
+      toast(sent
+        ? line + '. ' + sent + ' sent to the panel; the rest are below to copy.'
+        : line + '. Copy each share below and hand it out.', 'ok');
+      postChat(line);
+    }
   }
 
   /* Roll a band's treasure into a hoard, replacing whatever was there. */
@@ -1010,8 +1049,15 @@
   function renderReceipts() {
     var box = el('div', { class: 'card' }, [el('h3', {}, ['Purchases — ' + S.receipts.length])]);
     if (!S.receipts.length) box.appendChild(el('div', { class: 'muted' }, ['Nothing bought yet.']));
+    else box.appendChild(el('p', { class: 'muted', style: { marginTop: 0 } }, [
+      'Copy a code, open Tale Sheet, and paste it into the box under Inventory.'
+    ]));
     S.receipts.slice().reverse().forEach(function (r) {
-      box.appendChild(el('div', { class: 'receipt' }, [r]));
+      var line = typeof r === 'string' ? r : r.text;
+      box.appendChild(el('div', { class: 'receipt' }, [line]));
+      if (r && r.loot) {
+        box.appendChild(copyBox(r.loot, 'Paste this into Tale Sheet to collect it'));
+      }
     });
     if (S.receipts.length) {
       box.appendChild(el('div', { class: 'btnrow', style: { marginTop: '8px' } }, [
@@ -1021,6 +1067,36 @@
       ]));
     }
     view.appendChild(box);
+  }
+
+  /* A copyable code. The clipboard API is not always granted inside the
+     embedded webview, so this falls back to selecting the text and letting the
+     old execCommand path take it - and if even that fails the text is on
+     screen, selected, ready for Ctrl+C. */
+  function copyBox(code, label) {
+    var ta = el('textarea', { class: 'lootcode', rows: 2, readonly: true, value: code });
+    var btn = el('button', { class: 'btn sm primary' }, ['Copy']);
+    btn.addEventListener('click', function () {
+      ta.focus(); ta.select(); ta.setSelectionRange(0, code.length);
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      if (ok) { flash('Copied'); return; }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(code)
+          .then(function () { flash('Copied'); })
+          .catch(function () { flash('Press Ctrl+C', 'err'); });
+      } else { flash('Press Ctrl+C', 'err'); }
+    });
+    function flash(msg, cls) {
+      btn.textContent = msg;
+      toast(msg === 'Copied' ? 'Copied — paste it into Tale Sheet' : msg, cls || 'ok');
+      setTimeout(function () { btn.textContent = 'Copy'; }, 1400);
+    }
+    return el('div', { class: 'lootbox' }, [
+      label ? el('div', { class: 'muted' }, [label]) : null,
+      ta,
+      el('div', { class: 'btnrow' }, [btn])
+    ]);
   }
 
   /* ==== small widgets ==================================================== */

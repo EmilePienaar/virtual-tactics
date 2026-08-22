@@ -24,9 +24,6 @@
       "clients": {
         "onClientEvent": "onClientEvent"
       }
-    },
-    "interop": {
-      "id": "3d9c7f52-8a41-4b06-9e73-1f2a5c8d40be"
     }
   },
   "environment": {

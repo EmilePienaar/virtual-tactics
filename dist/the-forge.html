@@ -4760,6 +4760,61 @@ h2.step {
   }
 
 
+
+  /* ---- handing loot to a character ---------------------------------------
+     TaleSpire only lets two different symbiotes message each other when both
+     declare a shared interop id, and a manifest carrying one is not always
+     accepted - so this does not rely on it. Tale Shop writes what you got as a
+     short piece of JSON, you copy it, and Tale Sheet reads it back. Slower than
+     a direct hand-off by one paste, but it works everywhere, survives either
+     panel being shut, and can be pasted into chat for someone who missed it. */
+  function lootCode(payload) {
+    var out = { vt: 'loot', v: 1 };
+    if (payload.from) out.from = String(payload.from);
+    var items = (payload.items || []).filter(function (i) { return i && i.name; })
+      .map(function (i) {
+        var o = { name: String(i.name), qty: Math.max(1, i.qty | 0) || 1 };
+        if (i.note) o.note = String(i.note);
+        return o;
+      });
+    if (items.length) out.items = items;
+    var coins = {};
+    Object.keys(payload.coins || {}).forEach(function (k) {
+      if (payload.coins[k] > 0) coins[k] = payload.coins[k] | 0;
+    });
+    if (Object.keys(coins).length) out.coins = coins;
+    return JSON.stringify(out);
+  }
+
+  /* Accepts a loot code, or a bare object, or the JSON with stray text around
+     it - people paste from chat and bring the quotes with them. */
+  function parseLootCode(text) {
+    if (!text) return null;
+    var data = text;
+    if (typeof text === 'string') {
+      var t = text.trim();
+      if (t.charAt(0) !== '{') {
+        var a = t.indexOf('{'), b = t.lastIndexOf('}');
+        if (a < 0 || b < a) return null;
+        t = t.slice(a, b + 1);
+      }
+      try { data = JSON.parse(t); } catch (e) { return null; }
+    }
+    if (!data || data.vt !== 'loot') return null;
+    if (!data.items && !data.coins) return null;
+    return { from: data.from || null, items: data.items || [], coins: data.coins || {} };
+  }
+
+  /* A one-line reading of what a code contains, for confirming before applying. */
+  function describeLoot(payload, sys) {
+    var bits = (payload.items || []).map(function (i) {
+      return (i.qty || 1) + ' ' + '×' + ' ' + i.name;
+    });
+    var base = VT.coin.toBase(payload.coins || {}, sys);
+    if (base) bits.push(VT.coin.format(base, sys));
+    return bits.join(', ') || 'nothing';
+  }
+
   /* ---- what a hoard looks like -------------------------------------------
      Four scenes, picked by what the pile is worth, so the party can tell a
      looted corpse from a dragon's bed at a glance before reading a word:
@@ -4938,6 +4993,7 @@ h2.step {
   VT.shops = {
     makeHoard: makeHoard, isFree: isFree,
     hoardArt: hoardArt, hoardTier: hoardTier, hoardWorth: hoardWorth,
+    lootCode: lootCode, parseLootCode: parseLootCode, describeLoot: describeLoot,
     HOARD_TIERS: HOARD_TIERS, splitCoins: splitCoins,
     TEMPLATES: TEMPLATES, templateByKey: templateByKey,
     makeShop: makeShop, stockFrom: stockFrom, goodFromItem: goodFromItem,

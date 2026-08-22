@@ -52,17 +52,19 @@ A hoard is a shop with nothing to pay. Make an empty one and stock it by hand,
 or roll one off the treasure tables by challenge rating — coins, gems, art
 objects and magic items, straight from the book's own d100 tables.
 
-Players open it like a shop and **Take** instead of Buy. What they take goes
-directly into their Tale Sheet inventory, and the loose coin into their purse,
-because the two symbiotes share an interop id and can talk to each other.
+Players open it like a shop and **Take** instead of Buy. Whatever they take
+comes back as a short code on the **Purchases** tab: press **Copy**, open Tale
+Sheet, and paste it into *Collect from Tale Shop* under Inventory. Items and
+coin land in the right places.
 
 Give it a name and a tagline of your own. Its picture is chosen by what it is
 worth — a skull and a spilled purse, a strongbox, a heap of coin, or a dragon's
 bed — and you can override that from the hoard panel.
 
-**Splitting the coin.** Set how many ways (it starts at however many other
-people are at the table) and press *Hand it out*. Each share goes straight to a
-player's purse. Nothing is lost to rounding, and a share with nobody to send it
-to stays in the hoard so you can pass it on yourself.
+**Splitting the coin.** Set how many ways and press *Hand it out*. Each share
+becomes its own code. Anyone with Tale Shop open gets theirs on the Purchases
+tab automatically; every share is also listed for you to copy, so you can paste
+one into chat for whoever is not looking. Nothing is lost to rounding, and the
+codes stay in the panel until you clear them.
 
 Hoards built in Shopsmith import here unchanged.
