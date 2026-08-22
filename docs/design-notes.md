@@ -839,6 +839,36 @@ default bucket rather than erroring.
 The sheet's own Edit and Build tabs are left whole; sections apply only to the
 Sheet tab, where the card count is the problem.
 
+### Sizing it for a monitor
+
+sheet.css is written for a phone-width panel in TaleSpire: 11px labels, 9px stat
+captions, buttons sized for a thumb. Dropped into a 1600px page that reads as a
+postage stamp in the middle of an empty desk.
+
+The scaling happens in the same pass that scopes the selectors - lengths that
+control apparent size are multiplied on the way past. An override list in
+sheet-embed.css would have had to name every size in the file and would have
+fallen out of step the first time one changed. Borders and radii are left alone,
+because a 1px rule scaled to 1.3px is just a blurry 1px rule.
+
+Two traps, both of which produced silent wrongness rather than errors:
+
+**Do not walk `style[i]`.** Iterating a declaration block yields the *longhands*
+of any shorthand, and a shorthand written with a `var()` - `background:
+var(--panel)`, `border: 1px solid var(--line)` - cannot be decomposed before it
+is computed, so every longhand comes back as the empty string. Doing that
+stripped the background and border off every card while looking perfectly
+reasonable in the code. Rewrite `cssText` instead.
+
+**`font-size` may come back as `font`.** The browser re-serialises font-size,
+font-family and line-height into the shorthand, so a font-size-only match misses
+the one rule that sets the base size for the entire sheet.
+
+Cards are laid out in a **grid**, not CSS columns - `auto-fit` so a section
+holding one card lets it grow instead of stranding it in a narrow track, with a
+max-width per card so a lone one stops at a readable width rather than becoming
+a 1500px line of text.
+
 ### The stylesheet was the hard part
 
 `sheet.css` was written for a page it owns: `:root` variables, `html`/`body`

@@ -6,39 +6,69 @@
    how the sheet is laid out as one panel among several, and the Forge-side
    furniture that goes with it. */
 
+/* Two ids, because the scoped stylesheet is injected last and #app's
+   "height: 100vh" is carried onto the host by the whole-page mapping. Here the
+   sheet is one panel in a page, not the page. */
+#bwork #sheetHost { display: flex; flex-direction: column; min-height: 0; height: auto; }
 #sheetHost { display: flex; flex-direction: column; min-height: 0; }
 #sheetHost.hidden { display: none; }
 
 /* the sheet's own chrome, sized for a desk rather than a phone strip */
 #sheetHost #bar {
-  display: flex; gap: 8px; align-items: center;
-  padding: 8px 10px; border-bottom: 1px solid var(--line);
+  display: flex; gap: 10px; align-items: center;
+  padding: 10px 16px; border-bottom: 1px solid var(--line);
 }
-#sheetHost #charPick { flex: 1; max-width: 340px; }
-#sheetHost #tabs { display: flex; gap: 2px; padding: 0 8px; }
+#sheetHost #charPick { flex: 0 1 380px; font-size: 15px; padding: 6px 10px; }
+/* The sheet's own tabs stretch full width by default, which looks odd across a
+   monitor; keep them to their content beside the section bar. */
+#sheetHost #tabs { display: flex; gap: 2px; padding: 0 16px; }
+#sheetHost #tabs .tab { flex: 0 0 auto; padding: 8px 22px; }
 
 /* One column, scrolling one way. A multi-column flow reads down the first
    column and back up to the top of the second, which is a lot of travel for
    one character; the sections below are what keep it short instead. */
+/* Cards across the width, not down a 800px ribbon with the rest of the monitor
+   empty beside it.
+
+   A grid, not CSS columns. Multi-column flow runs down the first column and
+   back up to the second, so reading one character means travelling the page
+   twice; a grid fills left to right, top to bottom, which is the order things
+   are actually written in. auto-fill rather than auto-fit on purpose: a section
+   holding one card should leave it one column wide, not stretch it across the
+   monitor. */
 #sheetHost #view {
-  padding: 10px 12px;
+  padding: 14px 16px;
   overflow-x: hidden;
   overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 14px;
+  align-content: start;
+  align-items: start;
 }
+
+/* auto-fit, not auto-fill: a section holding one or two cards should let them
+   grow into the space rather than sit in a narrow track with the rest of the
+   monitor empty beside them. The cap is what stops a lone card becoming a
+   1500px line of text - it grows to a comfortable width and no further. */
+#sheetHost #view > * { max-width: 880px; min-width: 0; }
 #sheetHost #toast { position: fixed; bottom: 14px; right: 14px; z-index: 60; }
 
 /* ---- sections ---- */
 #sheetGroups {
-  display: flex; gap: 2px; padding: 6px 10px 0;
+  display: flex; gap: 4px; padding: 8px 16px 0;
   border-bottom: 1px solid var(--line);
 }
 #sheetGroups.hidden { display: none; }
+/* These are the sheet's main navigation on this tab, so they are sized like
+   navigation rather than like a footnote. */
 .sub-tab {
-  padding: 4px 12px; font-size: 11px; border-radius: 5px 5px 0 0;
+  padding: 8px 20px; font-size: 15px; border-radius: 6px 6px 0 0;
+  font-family: var(--serif); letter-spacing: .04em;
   color: var(--ink-dim); background: none; border: none; cursor: pointer;
   border-bottom: 2px solid transparent;
 }
-.sub-tab:hover { color: var(--ink); }
+.sub-tab:hover { color: var(--ink); background: #201d2a; }
 .sub-tab.on { color: var(--gold); border-bottom-color: var(--gold); }
 
 /* Show one section at a time. "all" is the Edit and Build tabs, which are
@@ -93,4 +123,3 @@
 /* The Sheet tab has nothing for the side rail - the dice tray floats instead -
    so the sheet takes the full width. */
 #bmain.no-rail > #bside { display: none; }
-#sheetHost #view { max-width: 820px; margin: 0 auto; }

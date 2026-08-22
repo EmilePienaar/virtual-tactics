@@ -205,10 +205,44 @@
     }).join(', ');
   }
 
+  /* sheet.css is sized for a phone-width panel in TaleSpire: 11px labels, 9px
+     stat captions, buttons a thumb can just about hit. On a monitor that reads
+     as a postage stamp in the middle of an empty page.
+
+     Scaling happens here, in the same pass that scopes the selectors, rather
+     than as a parallel set of overrides in sheet-embed.css. An override list
+     would have to name every size in the file and would silently fall out of
+     step the first time one changed; multiplying the values as they go past
+     cannot. Only lengths that control apparent size are touched - borders and
+     radii keep their pixel values, because a 1px rule scaled to 1.3px is just
+     a blurry 1px rule. */
+  var SCALE = 1.3;
+  /* "font" is in the list because the browser re-serialises font-size,
+     font-family and line-height back into the shorthand, so a rule that was
+     written as font-size comes back out as "font: 13px/1.45 ..." and would
+     escape a font-size-only match. The only px in that shorthand is the size. */
+  var SCALED = /^(font|font-size|padding|padding-top|padding-right|padding-bottom|padding-left|gap|row-gap|column-gap|min-width|min-height|width|height)$/;
+
+  /* Scale the rule's own text. Walking style[i] instead looks tidier and is
+     wrong: iterating a declaration block yields the LONGHANDS of any shorthand,
+     and a shorthand written with a var() - "background: var(--panel)",
+     "border: 1px solid var(--line)" - cannot be decomposed before it is
+     computed, so every longhand comes back as the empty string. Doing that
+     silently stripped the background and border off every card. */
+  function scaleDecls(style) {
+    return style.cssText.replace(/(^|;)\s*([-a-zA-Z]+)\s*:\s*([^;]+)/g,
+      function (whole, lead, prop, val) {
+        if (!SCALED.test(prop.toLowerCase()) || val.indexOf('px') < 0) return whole;
+        return lead + prop + ': ' + val.replace(/(-?[\d.]+)px/g, function (_, n) {
+          return (Math.round(parseFloat(n) * SCALE * 100) / 100) + 'px';
+        });
+      });
+  }
+
   function scopeRules(rules, out) {
     Array.prototype.forEach.call(rules, function (r) {
       if (r.type === 1) {                      /* style rule */
-        out.push(scopeSelector(r.selectorText) + '{' + r.style.cssText + '}');
+        out.push(scopeSelector(r.selectorText) + '{' + scaleDecls(r.style) + '}');
       } else if (r.type === 4) {               /* @media */
         var inner = [];
         scopeRules(r.cssRules, inner);
