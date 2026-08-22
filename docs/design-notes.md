@@ -773,6 +773,54 @@ one import/export path, so a file written by either is normalised the same way.
 
 ---
 
+## Running the symbiote's sheet inside the Forge
+
+The Forge's Sheet tab is not a second character sheet. It is `tale-sheet/sheet.js`
+itself, loaded into the Forge page - two thousand lines of rolling, resting,
+levelling, slots, death saves, attunement and wild shape that would otherwise
+have to exist twice and drift apart, with the copy always being the stale one.
+
+Three things have to be arranged for it to run outside TaleSpire:
+
+**The DOM.** sheet.js looks up `#view` and `#toast` at boot, and boots on a
+timer, so the skeleton lives in `builder/index.html` from the start and is
+parked out of the way until the tab is opened - built on demand it would not
+exist when the sheet went looking.
+
+**Storage.** In the symbiote a character lives in TaleSpire's campaign storage.
+Here it should be the Forge's roster, so an adapter maps the sheet's blob onto
+`VT.store.campaign.roster` - the same objects the Roster tab edits. The roster
+array is mutated in place rather than replaced, because the Roster tab holds a
+reference to it. The sheet also reads its state only once at boot, which is
+right when it owns its storage and wrong when another tab is editing the same
+list, so `VT.sheetApp.reload()` exists for a host to call.
+
+**Dice.** The dev shim already rolls for real and returns results through
+`onRollResults`; it just had nowhere to show them. The roll log chains that
+handler rather than replacing it - the sheet uses those same results for death
+saves and hit dice, and quietly stealing them would break it in ways that only
+appear mid-fight.
+
+### The stylesheet was the hard part
+
+`sheet.css` was written for a page it owns: `:root` variables, `html`/`body`
+sizing, `#app` filling the viewport, and plain names like `.card`, `.btn` and
+`.row`. The Forge uses all of those. Loading it as-is put the Forge's own
+toolbar through a hedge.
+
+A hand-scoped duplicate would drift the first time either file changed, and
+`tale-sheet` is what the table actually runs so it cannot be bent to suit an
+embedder. So the rules are rewritten at load instead: walk the parsed
+stylesheet, prefix every selector with `#sheetHost`, re-point the three that
+mean "the whole page" at the host element, and disable the original. One copy of
+the file, scoped automatically, nothing to keep in step by hand.
+
+`*` is worth calling out - mapping it to the host alone silently dropped
+`box-sizing: border-box` from every element inside the sheet. It has to become
+the host *and* its descendants.
+
+---
+
 ## Wild Shape, without swapping the character out
 
 Wild Shape is not a modifier - it is a second stat block. Beast form replaces

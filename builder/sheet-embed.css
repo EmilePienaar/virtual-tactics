@@ -1,0 +1,40 @@
+/* The symbiote sheet, hosted inside the Forge.
+
+   sheet.css was written for a narrow panel that owns its whole window: it
+   styles #app as a full-height flex column and sizes for a phone-width strip.
+   Inside the Forge it is one panel among several, so the parts that assume the
+   window are re-scoped here rather than edited there - tale-sheet has to keep
+   working as a symbiote, and that is the copy the table depends on. */
+
+#sheetHost { display: flex; flex-direction: column; min-height: 0; }
+#sheetHost.hidden { display: none; }
+
+/* the sheet's own chrome, sized for a desk rather than a side panel */
+#sheetHost #bar {
+  display: flex; gap: 8px; align-items: center;
+  padding: 8px 10px; border-bottom: 1px solid var(--line);
+}
+#sheetHost #charPick { flex: 1; max-width: 340px; }
+#sheetHost #tabs { display: flex; gap: 2px; padding: 0 8px; }
+#sheetHost #view {
+  padding: 10px; overflow-y: auto;
+  /* two columns on a wide screen: the sheet is a long strip by design, and on
+     a monitor that is a lot of scrolling for no reason */
+  column-gap: 14px;
+}
+@media (min-width: 1100px) {
+  #sheetHost #view { columns: 2; }
+  #sheetHost #view > .card { break-inside: avoid; margin-bottom: 12px; }
+}
+#sheetHost #toast { position: fixed; bottom: 14px; right: 14px; z-index: 60; }
+
+/* ---- the roll log in the side rail ---- */
+.rolllog { display: flex; flex-direction: column; gap: 3px; max-height: 420px; overflow-y: auto; }
+.rolline {
+  display: flex; align-items: baseline; gap: 6px;
+  padding: 3px 5px; border-radius: 4px; background: #17151f;
+}
+.rolline.fresh { background: #1e2a1c; }
+.rolline .rn { flex: 1; font-size: 11px; }
+.rolline .rd { font-family: var(--mono); font-size: 9px; color: var(--ink-faint); }
+.rolline .rt { font-family: var(--mono); font-size: 14px; color: var(--gold); min-width: 26px; text-align: right; }

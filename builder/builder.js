@@ -109,6 +109,9 @@
   }
 
   function setMode(m) {
+    /* The hosted sheet is a real DOM subtree, not markup regenerated each
+       render, so it has to be put away deliberately when leaving the tab. */
+    if (B.mode === 'sheet' && m !== 'sheet' && VT.sheetView) VT.sheetView.hide();
     B.mode = m;
     U.$$('.mode-btn').forEach(function (b) { b.classList.toggle('active', b.dataset.mode === m); });
     render();
@@ -119,6 +122,7 @@
     /* Homebrew authoring needs no compendium behind it, and neither does the
        roster - an already-built character carries its own numbers. Both are
        richer with a source connected, and both say so where it matters. */
+    if (B.mode === 'sheet') { VT.sheetView.render(work, side); return; }
     if (B.mode === 'roster') { VT.rosterUI.render(work, side, PARTS); return; }
     if (B.mode === 'homebrew') {
       VT.homebrewUI.render(work, function () { updateBadge(); });

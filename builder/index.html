@@ -7,6 +7,8 @@
 <link rel="stylesheet" href="../styles.css">
 <link rel="stylesheet" href="../src/ui/choiceui.css">
 <link rel="stylesheet" href="builder.css">
+<link rel="stylesheet" href="../tale-sheet/sheet.css">
+<link rel="stylesheet" href="sheet-embed.css">
 </head>
 <body class="builder">
 <div id="app">
@@ -17,6 +19,7 @@
       <button class="mode-btn" data-mode="character">Character</button>
       <button class="mode-btn" data-mode="forge">Creature</button>
       <button class="mode-btn" data-mode="roster">Roster</button>
+      <button class="mode-btn" data-mode="sheet">Sheet</button>
       <button class="mode-btn" data-mode="compendium">Compendium</button>
       <button class="mode-btn" data-mode="homebrew">Homebrew</button>
     </nav>
@@ -34,6 +37,28 @@
 
   <div id="tooltip" class="hidden"></div>
   <div id="modalRoot"></div>
+</div>
+
+<!-- The character sheet from tale-sheet/, hosted here. sheet.js looks up
+     #view and #toast at boot time, so this skeleton is present from the start
+     and simply parked out of the way until the Sheet tab is opened. -->
+<div id="sheetHost" class="hidden">
+  <header id="bar">
+    <select id="charPick" title="Active character"></select>
+    <div id="rollMode" title="Applies to d20 rolls">
+      <button data-adv="-1" title="Disadvantage">Dis</button>
+      <button data-adv="0" class="on" title="Normal">Norm</button>
+      <button data-adv="1" title="Advantage">Adv</button>
+    </div>
+    <button id="critToggle" title="Double the damage dice on the next damage roll">Crit</button>
+  </header>
+  <nav id="tabs">
+    <button class="tab on" data-tab="sheet">Sheet</button>
+    <button class="tab" data-tab="edit">Edit</button>
+    <button class="tab" data-tab="build">Build</button>
+  </nav>
+  <main id="view"></main>
+  <div id="toast"></div>
 </div>
 
 <input type="file" id="dirPicker" class="hidden" webkitdirectory directory multiple>
@@ -63,6 +88,9 @@
 <script src="../src/ui/choiceui.js"></script>
 <script src="homebrew.js"></script>
 <script src="roster.js"></script>
+<script src="../src/dev/ts-shim.js"></script>
+<script src="sheetview.js"></script>
+<script src="../tale-sheet/sheet.js"></script>
 <script src="builder.js"></script>
 </body>
 </html>

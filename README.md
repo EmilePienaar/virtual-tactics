@@ -145,8 +145,12 @@ Stock lives on the GM's copy, so two people can't both take the last potion.
 ## The Forge — building characters in a browser
 
 The Forge is the same character builder as the sheet's, with a full screen and a
-keyboard. It also holds a searchable compendium of everything in your data, and a
-**Roster** tab for levelling and editing anything you've made.
+keyboard. It also holds a searchable compendium of everything in your data, a
+**Roster** tab for levelling and editing anything you've made, and a **Sheet**
+tab that runs the real character sheet — the same one as the symbiote, not a
+copy of it. Pick anyone from your roster and play from it: rolls go into a dice
+log beside the sheet instead of TaleSpire's tray, and everything else behaves
+identically.
 
 Export a character from the Forge and import it in Tale Sheet.
 

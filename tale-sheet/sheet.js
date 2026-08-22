@@ -2610,4 +2610,22 @@
     U.clear(host);
     host.appendChild(el('div', { class: cls }, [msg]));
   }
+
+  /* A small door for a host page.
+
+     Inside TaleSpire nothing else shares this storage, so the sheet reads it
+     once at boot and owns it thereafter. Embedded in the Forge that is not
+     true: the roster is edited on other tabs, and a character built there
+     after boot would otherwise be invisible here. Re-reading on demand is the
+     whole of what a host needs. */
+  VT.sheetApp = {
+    reload: function () {
+      return loadState().then(function () { render(); });
+    },
+    select: function (id) {
+      if (id) S.activeId = id;
+      render();
+    },
+    active: function () { return active(); }
+  };
 })();
