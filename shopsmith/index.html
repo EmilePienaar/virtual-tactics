@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shopsmith — Virtual Tactics</title>
+<link rel="stylesheet" href="../styles.css">
+<link rel="stylesheet" href="../builder/builder.css">
+<link rel="stylesheet" href="shopsmith.css">
+</head>
+<body class="builder">
+<div id="app">
+  <header id="topbar">
+    <div class="brand"><span class="rune">&#9670;</span> SHOPSMITH</div>
+    <nav id="modes">
+      <button class="mode-btn" data-mode="shops">Shops</button>
+      <button class="mode-btn" data-mode="edit">Edit</button>
+      <button class="mode-btn" data-mode="preview">Player view</button>
+    </nav>
+    <div class="spacer"></div>
+    <div id="srcBadge" class="src-badge">no source</div>
+    <button class="tb" id="btnSource">Data Source</button>
+    <button class="tb" id="btnExport" title="Download a .taleshop.json for Tale Shop">Export</button>
+    <button class="tb" id="btnImport">Import</button>
+    <a class="tb" href="../builder/index.html">The Forge &#8594;</a>
+  </header>
+
+  <main id="bmain">
+    <div id="bwork"></div>
+    <aside id="bside"></aside>
+  </main>
+
+  <div id="tooltip" class="hidden"></div>
+  <div id="modalRoot"></div>
+</div>
+
+<input type="file" id="dirPicker" class="hidden" webkitdirectory directory multiple>
+<input type="file" id="jsonPicker" class="hidden" accept="application/json" multiple>
+<input type="file" id="imgPicker" class="hidden" accept="image/*">
+
+<script src="../src/core/util.js"></script>
+<script src="../src/core/dice.js"></script>
+<script src="../src/core/store.js"></script>
+<script src="../src/render/spriteart.js"></script>
+<script src="../src/rules/srd.js"></script>
+<script src="../src/rules/actor.js"></script>
+<script src="../src/data/tags.js"></script>
+<script src="../src/data/fivetools.js"></script>
+<script src="../src/data/convert.js"></script>
+<script src="../src/data/currency.js"></script>
+<script src="../src/data/shops.js"></script>
+<script src="../src/data/loot.js"></script>
+<script src="shopsmith.js"></script>
+</body>
+</html>

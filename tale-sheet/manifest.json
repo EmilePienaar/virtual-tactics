@@ -1,0 +1,50 @@
+{
+  "manifestVersion": 1,
+  "name": "Tale Sheet",
+  "summary": "A 5e character sheet that builds from your own 5etools data and rolls straight into the TaleSpire dice tray.",
+  "entryPoint": "/sheet.html",
+  "version": "1.0",
+  "license": "MIT",
+  "descriptionFilePath": "/readme.md",
+  "kind": "webView",
+  "controls": {
+    "reload": true,
+    "navigation": false
+  },
+  "api": {
+    "version": "0.1",
+    "initTimeout": 20,
+    "subscriptions": {
+      "symbiote": {
+        "onStateChangeEvent": "onStateChangeEvent"
+      },
+      "dice": {
+        "onRollResults": "onRollResults"
+      },
+      "creatures": {
+        "onCreatureStateChange": "onCreatureStateChange"
+      },
+      "sync": {
+        "onSyncMessage": "onSyncMessage"
+      },
+      "clients": {
+        "onClientEvent": "onClientEvent"
+      }
+    },
+    "interop": {
+      "id": "3d9c7f52-8a41-4b06-9e73-1f2a5c8d40be"
+    }
+  },
+  "environment": {
+    "webViewBackgroundColor": "#12111a",
+    "loadTargetBehavior": "none",
+    "capabilities": [
+      "runInBackground"
+    ],
+    "extras": [
+      "fonts",
+      "icons",
+      "colorStyles"
+    ]
+  }
+}

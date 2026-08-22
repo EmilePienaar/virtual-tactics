@@ -1,0 +1,435 @@
+{
+  "_comment": [
+    "Side-car for tools/import-guide.js.",
+    "",
+    "Which headings in the Dark Sun Athascon guide are subclasses is stated by",
+    "the book itself, on its contents page. Transcribing that is deterministic;",
+    "guessing it from the prose is not - the difference between a subclass and",
+    "its first feature is a matter of layout, and a mis-classification puts a",
+    "feature into the choice tree as though it were a path you could take.",
+    "",
+    "'Arcane Defilement' appears under Wizard in the contents but is a class",
+    "feature in the body ('NEW FEATURE: ARCANE DEFILEMENT'), so it is not here."
+  ],
+  "source": "DSA",
+  "name": "Dark Sun Player's Guide (Athascon)",
+  "version": "2.1",
+  "_classSourceNote": [
+    "Which printing of each class these subclasses attach to. The guide is a",
+    "2014 conversion - its cleric domains grant features at 1st level and its",
+    "feats cite the 2014 Player's Handbook - so they hang off the PHB classes.",
+    "The Psion is defined by this book itself, so its orders hang off DSA."
+  ],
+  "classSource": {
+    "default": "PHB",
+    "Psion": "DSA"
+  },
+  "subclasses": {
+    "Barbarian": [
+      "Path of the Pit Fighter",
+      "Path of the Wilder"
+    ],
+    "Cleric": [
+      "Air Domain",
+      "Earth Domain",
+      "Fire Domain",
+      "Water Domain"
+    ],
+    "Druid": [
+      "Circle of the Land"
+    ],
+    "Fighter": [
+      "Gladiator",
+      "Warlord"
+    ],
+    "Monk": [
+      "Way of the Unseen Mind"
+    ],
+    "Psion": [
+      "Order of the Egoist",
+      "Order of the Telepath",
+      "Order of the Nomad",
+      "Order of the Kineticist",
+      "Order of the Seer"
+    ],
+    "Ranger": [
+      "Beast Conclave",
+      "Hunter Conclave",
+      "Stalker Conclave"
+    ],
+    "Rogue": [
+      "Athasian Bard"
+    ],
+    "Wizard": [
+      "Ecomancer",
+      "Arcanamach"
+    ]
+  },
+  "subspecies": {
+    "Ssurran": [
+      "Scorched-scale",
+      "Sandscale",
+      "Obsidian-Claw"
+    ],
+    "Thri-Kreen, Athasian": [
+      "To’ksa",
+      "To'ksa",
+      "Jeral"
+    ]
+  },
+  "subclassTitles": {
+    "Barbarian": "Primal Path",
+    "Cleric": "Divine Domain",
+    "Druid": "Druid Circle",
+    "Fighter": "Martial Archetype",
+    "Monk": "Monastic Tradition",
+    "Psion": "Psionic Order",
+    "Ranger": "Ranger Conclave",
+    "Rogue": "Roguish Archetype",
+    "Wizard": "Arcane Tradition"
+  },
+  "_classTableNote": [
+    "The Psion's class table, transcribed from page 38. pdftotext renders it",
+    "column-major, so the Features column arrives as one undelimited run of",
+    "words - 'Psionics, Psionic Talents Telepathy Psionic Order Select a Feat",
+    "...' - which cannot be split back into rows by position. The numeric",
+    "columns CAN be read from the text, and the importer checks these against",
+    "them and complains if they disagree."
+  ],
+  "classTable": {
+    "Psion": {
+      "hitDie": 6,
+      "saves": [
+        "int",
+        "wis"
+      ],
+      "subclassTitle": "Psionic Order",
+      "features": {
+        "1": [
+          "Psionics",
+          "Psionic Talents"
+        ],
+        "2": [
+          "Telepathy"
+        ],
+        "3": [
+          "Psionic Order"
+        ],
+        "4": [
+          "Select a Feat"
+        ],
+        "5": [
+          "Strength of Mind"
+        ],
+        "6": [
+          "Psionic Order Feature"
+        ],
+        "7": [
+          "Meditation"
+        ],
+        "8": [
+          "Select a Feat"
+        ],
+        "9": [
+          "Psionic Order Feature"
+        ],
+        "10": [
+          "Consumptive Power"
+        ],
+        "11": [
+          "Metapsionics (1/day)"
+        ],
+        "12": [
+          "Select a Feat"
+        ],
+        "13": [
+          "Metapsionics (2/day)"
+        ],
+        "14": [
+          "Psionic Order Feature"
+        ],
+        "15": [
+          "Metapsionics (3/day)"
+        ],
+        "16": [
+          "Select a Feat"
+        ],
+        "17": [
+          "Metapsionics (4/day)"
+        ],
+        "18": [
+          "High Science"
+        ],
+        "19": [
+          "Select a Feat"
+        ],
+        "20": [
+          "Metamind"
+        ]
+      },
+      "columns": {
+        "Orders Known": [
+          1,
+          1,
+          1,
+          1,
+          2,
+          2,
+          2,
+          2,
+          3,
+          3,
+          3,
+          3,
+          4,
+          4,
+          4,
+          4,
+          5,
+          5,
+          5,
+          5
+        ],
+        "Disciplines Known": [
+          1,
+          1,
+          2,
+          2,
+          3,
+          3,
+          4,
+          4,
+          5,
+          5,
+          6,
+          6,
+          7,
+          7,
+          8,
+          8,
+          9,
+          9,
+          10,
+          10
+        ],
+        "Psi Points": [
+          4,
+          6,
+          12,
+          18,
+          24,
+          28,
+          32,
+          36,
+          40,
+          44,
+          47,
+          50,
+          53,
+          56,
+          59,
+          62,
+          65,
+          68,
+          71,
+          74
+        ],
+        "Psi Limit": [
+          1,
+          1,
+          2,
+          2,
+          3,
+          3,
+          4,
+          4,
+          5,
+          5,
+          6,
+          6,
+          7,
+          7,
+          7,
+          7,
+          7,
+          7,
+          7,
+          7
+        ]
+      },
+      "disciplineColumn": "Disciplines Known",
+      "disciplineFeatureType": "PSI"
+    }
+  },
+  "_spellListNote": [
+    "Spells the guide REMOVES from a class list (chapter 7). These name",
+    "Player's Handbook spells, which the importer has no copy of, and the",
+    "tables are column-major - every name, then every level - so the names",
+    "cannot be split apart by position. Transcribed from pages 113-114.",
+    "",
+    "The cleric's removals apply 'unless they are domain spells for their",
+    "chosen element', which the app does not model; a cleric of the Water",
+    "domain should put Create or Destroy Water back by hand."
+  ],
+  "spellListRemovals": {
+    "Cleric": [
+      {
+        "name": "Create or Destroy Water",
+        "level": 1
+      },
+      {
+        "name": "Continual Flame",
+        "level": 2
+      },
+      {
+        "name": "Create Food and Water",
+        "level": 3
+      },
+      {
+        "name": "Meld Into Stone",
+        "level": 3
+      },
+      {
+        "name": "Water Walk",
+        "level": 3
+      },
+      {
+        "name": "Control Water",
+        "level": 4
+      },
+      {
+        "name": "Stone Shape",
+        "level": 4
+      },
+      {
+        "name": "Flame Strike",
+        "level": 5
+      },
+      {
+        "name": "Conjure Celestial",
+        "level": 7
+      },
+      {
+        "name": "Fire Storm",
+        "level": 7
+      },
+      {
+        "name": "Control Weather",
+        "level": 8
+      },
+      {
+        "name": "Earthquake",
+        "level": 8
+      }
+    ],
+    "Druid": [
+      {
+        "name": "Conjure Woodland Beings",
+        "level": 4
+      },
+      {
+        "name": "Conjure Fey",
+        "level": 6
+      }
+    ],
+    "Ranger": [
+      {
+        "name": "Conjure Woodland Beings",
+        "level": 4
+      }
+    ]
+  },
+  "_itemNote": [
+    "Equipment tables. The importer reads these from the PDF and checks every",
+    "weapon that also exists in the Player's Handbook against its printed",
+    "damage die - 36 of the 37 it can check come out identical, which is what",
+    "tells you the columns did not slip.",
+    "",
+    "'corrections' fixes the rows it gets wrong. In the martial ranged block one",
+    "row has its cost and damage on the same line of the PDF, which the column",
+    "reader will not accept as either column, and everything after it shifts.",
+    "",
+    "Prices are in Athasian coin: 1 ceramic piece (cr) = 10 bits, 10 cr = 1 sp,",
+    "100 cr = 1 gp. Values are stored in BITS so they stay whole numbers."
+  ],
+  "itemCorrections": {
+    "Longbow": {
+      "cost": "50 cr"
+    },
+    "Net": {
+      "cost": "2 cr",
+      "damage": "─"
+    }
+  },
+  "currency": {
+    "name": "Athasian",
+    "base": "bit",
+    "denominations": [
+      {
+        "key": "bit",
+        "name": "Bit",
+        "inBase": 1
+      },
+      {
+        "key": "cr",
+        "name": "Ceramic piece",
+        "inBase": 10
+      },
+      {
+        "key": "sp",
+        "name": "Silver piece",
+        "inBase": 100
+      },
+      {
+        "key": "gp",
+        "name": "Gold piece",
+        "inBase": 1000
+      }
+    ],
+    "skipInChange": []
+  },
+  "itemTables": [
+    {
+      "heading": "ARMOR",
+      "kind": "armor",
+      "categories": {
+        "Light Armor": "LA",
+        "Medium Armor": "MA",
+        "Heavy Armor": "HA",
+        "Shield": "S"
+      }
+    },
+    {
+      "heading": "SIMPLE WEAPONS",
+      "kind": "weapon",
+      "weaponCategory": "simple",
+      "categories": {
+        "Simple Melee Weapons": "M",
+        "Simple Ranged Weapons": "R"
+      }
+    },
+    {
+      "heading": "MARTIAL WEAPONS",
+      "kind": "weapon",
+      "weaponCategory": "martial",
+      "categories": {
+        "Martial Melee Weapons": "M",
+        "Martial Ranged Weapons": "R"
+      }
+    }
+  ],
+  "_gearNote": [
+    "Adventuring gear, tools and trade goods are NOT imported, on purpose.",
+    "",
+    "The gear and tool tables are printed two-up across the page and run over",
+    "two pages, with category rows ('Alchemical Items', 'Arcane Focus') that",
+    "carry no price of their own. The names extract cleanly and so do the price",
+    "columns, but they do not reconcile to the same count, and an item silently",
+    "wearing the next item's price is the failure this importer exists to",
+    "prevent. Better absent than wrong.",
+    "",
+    "Trade goods are a different thing again: they are priced per unit - '500 cp",
+    "/ ounce', '2 bits / gallon', '150+ cp' for a slave - so they are a rate",
+    "card, not inventory, and do not belong in an item list at all."
+  ]
+}

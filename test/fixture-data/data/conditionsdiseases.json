@@ -1,0 +1,6 @@
+{
+  "_note": "Synthetic test fixture. Invented content only.",
+  "condition": [
+    { "name": "Sootblind", "source": "TST", "entries": ["A sootblind creature cannot see and automatically fails checks requiring sight."] }
+  ]
+}

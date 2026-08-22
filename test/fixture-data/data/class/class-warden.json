@@ -1,0 +1,50 @@
+{
+  "_note": "Synthetic test fixture in the 5etools schema. Invented content only.",
+  "class": [
+    {
+      "name": "Warden",
+      "source": "TST",
+      "hd": { "number": 1, "faces": 10 },
+      "proficiency": ["con", "wis"],
+      "spellcastingAbility": "wis",
+      "casterProgression": "1/2",
+      "startingProficiencies": {
+        "armor": ["light", "medium", "shields"],
+        "weapons": ["simple", "martial"],
+        "skills": [{ "choose": { "from": ["athletics", "insight", "nature", "perception", "survival"], "count": 2 } }]
+      },
+      "classFeatures": ["Warden's Oath|Warden|TST|1"]
+    }
+  ],
+  "subclass": [
+    {
+      "name": "Circle of Ash",
+      "shortName": "Ash",
+      "source": "TST",
+      "className": "Warden",
+      "classSource": "TST",
+      "subclassFeatures": ["Ashen Step|Warden|TST|Ash|TST|3"]
+    },
+    {
+      "name": "Circle of Stone",
+      "shortName": "Stone",
+      "source": "TST",
+      "className": "Warden",
+      "classSource": "TST",
+      "subclassFeatures": ["Stoneskin Vow|Warden|TST|Stone|TST|3"]
+    }
+  ],
+  "classFeature": [
+    {
+      "name": "Warden's Oath",
+      "source": "TST",
+      "className": "Warden",
+      "classSource": "TST",
+      "level": 1,
+      "entries": [
+        "You swear an oath to a place. While within it you gain a {@dice 1d4} bonus to saving throws.",
+        "You know the {@spell Grave Spark|TST} cantrip."
+      ]
+    }
+  ]
+}

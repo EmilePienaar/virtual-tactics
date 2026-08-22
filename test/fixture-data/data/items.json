@@ -1,0 +1,54 @@
+{
+  "_note": "Synthetic test fixture in the 5etools schema. Invented content only.",
+  "item": [
+    {
+      "name": "Warden's Blade",
+      "source": "TST",
+      "type": "M",
+      "weapon": true,
+      "weaponCategory": "martial",
+      "dmg1": "1d8",
+      "dmg2": "1d10",
+      "dmgType": "S",
+      "property": ["V"],
+      "bonusWeapon": "+1",
+      "entries": ["A blade of blackened iron."]
+    },
+    {
+      "name": "Ash Dagger",
+      "source": "TST",
+      "type": "M",
+      "weapon": true,
+      "weaponCategory": "simple",
+      "dmg1": "1d4",
+      "dmgType": "P",
+      "property": ["F", "T"],
+      "range": "20/60"
+    },
+    {
+      "name": "Cinder Bow",
+      "source": "TST",
+      "type": "R",
+      "weapon": true,
+      "weaponCategory": "martial",
+      "dmg1": "1d8",
+      "dmgType": "P",
+      "property": ["A"],
+      "range": "150/600"
+    },
+    {
+      "name": "Long Pike",
+      "source": "TST",
+      "type": "M",
+      "weapon": true,
+      "weaponCategory": "martial",
+      "dmg1": "1d10",
+      "dmgType": "P",
+      "property": ["R"]
+    },
+    { "name": "Ashweave", "source": "TST", "type": "LA", "armor": true, "ac": 12 },
+    { "name": "Scaled Coat", "source": "TST", "type": "MA", "armor": true, "ac": 14, "stealth": true },
+    { "name": "Slab Plate", "source": "TST", "type": "HA", "armor": true, "ac": 18, "strength": "15" },
+    { "name": "Iron Bulwark", "source": "TST", "type": "S", "armor": true, "ac": 2 }
+  ]
+}

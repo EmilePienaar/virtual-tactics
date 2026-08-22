@@ -1,0 +1,21 @@
+{
+  "_note": "Synthetic test fixture in the 5etools schema. Invented content only.",
+  "background": [
+    {
+      "name": "Ashfield Walker",
+      "source": "TST",
+      "skillProficiencies": [{ "survival": true, "nature": true }],
+      "entries": [
+        { "type": "entries", "name": "Feature: Read the Burn", "entries": ["You can tell how long ago a fire passed through an area."] }
+      ]
+    },
+    {
+      "name": "Vault Scribe",
+      "source": "TST",
+      "skillProficiencies": [{ "history": true, "investigation": true }],
+      "entries": [
+        { "type": "entries", "name": "Feature: Archive Access", "entries": ["You know how to get into records rooms."] }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "_note": "Synthetic test fixture in the 5etools schema. Invented content only.",
+  "spell": [
+    {
+      "name": "Grave Spark",
+      "source": "TST",
+      "level": 0,
+      "school": "N",
+      "time": [{ "number": 1, "unit": "action" }],
+      "range": { "type": "point", "distance": { "type": "feet", "amount": 120 } },
+      "components": { "v": true, "s": true },
+      "duration": [{ "type": "instant" }],
+      "entries": [
+        "You hurl a mote of grave-cold at a creature within range. Make a ranged spell attack. On a hit the target takes {@damage 1d10} necrotic damage."
+      ],
+      "scalingLevelDice": {
+        "label": "necrotic damage",
+        "scaling": { "1": "1d10", "5": "2d10", "11": "3d10", "17": "4d10" }
+      },
+      "damageInflict": ["necrotic"],
+      "spellAttack": ["R"],
+      "classes": { "fromClassList": [{ "name": "Warden", "source": "TST" }] }
+    },
+    {
+      "name": "Rot Bloom",
+      "source": "TST",
+      "level": 3,
+      "school": "N",
+      "time": [{ "number": 1, "unit": "action" }],
+      "range": { "type": "point", "distance": { "type": "feet", "amount": 90 } },
+      "duration": [{ "type": "instant" }],
+      "entries": [
+        "A bloom of decay erupts at a point you choose. Each creature in a 20-foot-radius sphere must make a Constitution saving throw, taking {@damage 6d6} necrotic damage on a failed save, or half as much damage on a successful one.",
+        {
+          "type": "list",
+          "items": ["Plants in the area wither instantly.", "The bloom leaves difficult terrain behind."]
+        }
+      ],
+      "damageInflict": ["necrotic"],
+      "savingThrow": ["constitution"],
+      "areaTags": ["S"],
+      "classes": { "fromClassList": [{ "name": "Warden", "source": "TST" }] }
+    },
+    {
+      "name": "Warden's Mending",
+      "source": "TST",
+      "level": 1,
+      "school": "A",
+      "time": [{ "number": 1, "unit": "bonus" }],
+      "range": { "type": "point", "distance": { "type": "feet", "amount": 60 } },
+      "duration": [{ "type": "instant" }],
+      "entries": ["A creature you can see regains hit points equal to {@dice 2d4 + 2}."],
+      "classes": { "fromClassList": [{ "name": "Warden", "source": "TST" }] }
+    },
+    {
+      "name": "Bulwark Ward",
+      "source": "TST",
+      "level": 2,
+      "school": "A",
+      "time": [{ "number": 1, "unit": "action" }],
+      "range": { "type": "point", "distance": { "type": "touch" } },
+      "duration": [{ "type": "timed", "duration": { "amount": 1, "type": "minute" } }],
+      "entries": [
+        "The target is {@condition blessed} for the duration.",
+        {
+          "type": "table",
+          "caption": "Ward Strength",
+          "colLabels": ["Level", "Bonus"],
+          "rows": [["2nd", "+1"], ["4th", "+2"]]
+        }
+      ],
+      "classes": { "fromClassList": [{ "name": "Warden", "source": "TST" }] }
+    }
+  ]
+}

@@ -1,0 +1,108 @@
+/* Choice tree + class list. Shared by the Forge and the Tale Sheet symbiote;
+   both stylesheets pull this in, and both already define the same tokens. */
+.ch-classes { margin-bottom: 10px; }
+.ch-class {
+  display: flex; gap: 8px; align-items: center;
+  padding: 6px 8px; border: 1px solid var(--line); border-radius: 5px;
+  background: #16151f; margin-bottom: 5px;
+}
+.ch-class-main { flex: 1; min-width: 0; }
+.ch-class-nm { color: var(--ink); font-size: 13px; }
+.ch-steps { display: flex; gap: 4px; align-items: center; }
+.ch-lv {
+  font-family: var(--serif); font-size: 17px; color: var(--gold);
+  min-width: 26px; text-align: center;
+}
+.ch-total {
+  font: 11px var(--mono); color: var(--ink-dim);
+  padding: 5px 8px; border-top: 1px dotted var(--line);
+}
+.ch-add { margin-top: 8px; }
+.ch-sub { font-size: 10.5px; color: var(--ink-faint); }
+.ch-note { font-size: 11px; color: var(--ink-faint); line-height: 1.5; padding: 5px 2px; }
+
+.ch-head {
+  display: flex; justify-content: space-between; align-items: center;
+  font: 11px var(--mono); color: var(--gold); margin-bottom: 8px;
+}
+.ch-srcs { color: var(--ink-faint); font-size: 10.5px; cursor: pointer; display: flex; gap: 4px; align-items: center; }
+.ch-srcs input { width: auto; }
+
+.ch-group {
+  border: 1px solid var(--line); border-radius: 5px; background: #16151f;
+  margin-bottom: 7px; overflow: hidden;
+}
+.ch-group.ch-short { border-color: var(--gold-dim); }
+.ch-group-h {
+  display: flex; gap: 8px; align-items: center; cursor: pointer;
+  padding: 7px 9px; background: #1b1924;
+}
+.ch-group-h:hover { background: #221f2c; }
+.ch-group-nm { flex: 1; min-width: 0; color: var(--ink); font-size: 12.5px; }
+.ch-count { font: 11px var(--mono); color: var(--ink-dim); }
+.ch-count.ch-warn { color: var(--gold); }
+.ch-caret { color: var(--ink-faint); font-size: 10px; }
+
+.ch-chosen { display: flex; flex-wrap: wrap; gap: 4px; padding: 7px 9px; }
+.ch-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: #1f3324; border: 1px solid #3c6b42; color: #a6d8a8;
+  border-radius: 10px; padding: 2px 4px 2px 9px; font-size: 11px;
+}
+.ch-x { color: #a6d8a8; opacity: .65; padding: 0 4px; font-size: 12px; }
+.ch-x:hover { opacity: 1; color: #ffd9d6; }
+
+.ch-search { padding: 0 9px 6px; }
+.ch-list { max-height: 260px; overflow-y: auto; border-top: 1px solid var(--line); }
+.ch-list::-webkit-scrollbar { width: 9px; }
+.ch-list::-webkit-scrollbar-thumb { background: #38344a; border-radius: 5px; }
+.ch-opt {
+  display: flex; gap: 8px; align-items: baseline; justify-content: space-between;
+  padding: 5px 9px; cursor: pointer; border-bottom: 1px dotted #262231;
+}
+.ch-opt:hover { background: #262133; }
+.ch-opt-nm { font-size: 12px; color: var(--ink); }
+.ch-opt.ch-on { background: #1b2a1e; }
+.ch-opt.ch-on .ch-opt-nm { color: #a6d8a8; }
+.ch-opt.ch-no { opacity: .38; cursor: not-allowed; }
+.ch-opt.ch-no:hover { background: none; }
+
+.ch-abil { padding: 7px 9px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.ch-abil .ch-note { width: 100%; padding: 0 0 4px; }
+.ch-text {
+  white-space: pre-wrap; font-size: 11.5px; color: var(--ink-dim); line-height: 1.55;
+  padding: 7px 10px; border-top: 1px solid var(--line); max-height: 220px; overflow-y: auto;
+}
+.ch-picked-h {
+  font: 10px var(--mono); color: var(--gold-dim); letter-spacing: .1em;
+  margin: 9px 0 3px; border-bottom: 1px solid var(--line); padding-bottom: 2px;
+}
+
+/* A levelled spell's slot picker, under its row in the action list. */
+.castrow {
+  display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+  padding: 2px 0 7px 10px; margin-top: -3px;
+  border-left: 2px solid var(--line); margin-left: 4px;
+}
+.castrow .sub { font-size: 10px; color: var(--ink-faint); }
+.slotpip {
+  font: 10px var(--mono); padding: 2px 6px; border-radius: 9px;
+  border: 1px solid var(--line); background: #16151f; color: var(--ink-dim); cursor: pointer;
+}
+.slotpip:hover { border-color: var(--gold-dim); color: var(--ink); }
+.slotpip.on { background: var(--gold-dim); border-color: var(--gold); color: #151019; font-weight: 600; }
+.slotpip.out { opacity: .35; }
+
+/* A requirement that is shown but not enforced - the builder cannot judge it
+   until ability scores exist, so the row stays clickable. */
+.ch-opt.ch-caution { opacity: .8; }
+.ch-opt.ch-caution .ch-sub { color: var(--gold); }
+
+/* Death save pips: three and three, because that is how the rule reads. */
+.dspips { display: inline-flex; gap: 4px; }
+.dspip {
+  width: 13px; height: 13px; border-radius: 50%;
+  border: 1px solid var(--line); background: #14131b; cursor: pointer;
+}
+.dspip.ok.on { background: var(--green, #78b06a); border-color: var(--green, #78b06a); }
+.dspip.bad.on { background: var(--red, #c9605a); border-color: var(--red, #c9605a); }

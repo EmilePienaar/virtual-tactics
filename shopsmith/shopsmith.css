@@ -1,0 +1,45 @@
+/* Shopsmith — the desk-sized shop editor. Inherits the Forge's design tokens;
+   this only adds the shop-specific pieces. */
+.keeper-row { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
+.keeper-row .grow { flex: 1; min-width: 0; }
+.keeper-img {
+  flex: none; image-rendering: pixelated; border-radius: 5px;
+  background: #12111a; border: 1px solid var(--line); object-fit: contain;
+}
+.greeting {
+  border-left: 2px solid var(--gold-dim); background: #16151f;
+  padding: 8px 12px; margin-top: 8px; font-style: italic;
+  color: var(--ink-dim); border-radius: 0 4px 4px 0;
+}
+.shoplist { display: flex; flex-direction: column; gap: 8px; }
+.shopcard {
+  border: 1px solid var(--line); border-radius: 6px; background: #16151f; padding: 10px;
+  cursor: pointer;
+}
+.shopcard:hover { border-color: var(--gold-dim); }
+.shopcard.sel { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+.shopcard .nm { font-family: var(--serif); font-size: 15px; color: var(--ink); }
+.shopcard .keep { font-size: 11px; color: var(--ink-faint); }
+
+table.goods { width: 100%; border-collapse: collapse; font-size: 12px; }
+table.goods th {
+  text-align: left; font: 10px var(--mono); color: var(--ink-faint);
+  text-transform: uppercase; letter-spacing: .08em; padding: 4px 6px;
+  border-bottom: 1px solid var(--line);
+}
+table.goods td { padding: 3px 6px; border-bottom: 1px solid #1e1c28; vertical-align: middle; }
+table.goods tr.unpriced td { opacity: .5; }
+table.goods input { padding: 2px 5px; font-size: 12px; }
+table.goods .num { width: 74px; }
+table.goods .qty { width: 62px; }
+.tmplgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.tmpl { border: 1px solid var(--line); border-radius: 5px; background: #16151f;
+        padding: 10px; text-align: left; cursor: pointer; }
+.tmpl:hover { border-color: var(--gold-dim); background: #1d1b28; }
+.tmpl .tn { font-size: 13px; color: var(--ink); }
+.tmpl .td { font-size: 10.5px; color: var(--ink-faint); margin-top: 3px; }
+
+/* ---- treasure hoards ---- */
+.coinbox { display: flex; flex-direction: column; gap: 2px; align-items: center; }
+.coinbox .muted { font-size: 9px; text-transform: uppercase; letter-spacing: .06em; }
+.coinbox input { width: 68px; text-align: center; }

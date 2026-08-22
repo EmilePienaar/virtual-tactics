@@ -1,0 +1,102 @@
+{
+  "_note": "Synthetic test fixture. Invented content in the 5etools schema, used to exercise the importer. Contains no published game text.",
+  "monster": [
+    {
+      "name": "Cinder Hound",
+      "source": "TST",
+      "page": 12,
+      "size": ["M"],
+      "type": { "type": "beast", "tags": ["fire"] },
+      "alignment": ["N"],
+      "ac": [{ "ac": 14, "from": ["natural armor"] }],
+      "hp": { "average": 33, "formula": "6d8 + 6" },
+      "speed": { "walk": 40 },
+      "str": 15, "dex": 14, "con": 13, "int": 4, "wis": 12, "cha": 7,
+      "save": { "dex": "+4" },
+      "skill": { "perception": "+3" },
+      "senses": ["darkvision 60 ft."],
+      "passive": 13,
+      "resist": ["fire"],
+      "immune": ["poison"],
+      "vulnerable": ["cold"],
+      "languages": ["—"],
+      "cr": "2",
+      "trait": [
+        {
+          "name": "Ember Coat",
+          "entries": ["A creature that touches the hound takes 2 ({@damage 1d4}) fire damage."]
+        }
+      ],
+      "action": [
+        {
+          "name": "Bite",
+          "entries": ["{@atk mw} {@hit 4} to hit, reach 5 ft., one target. {@h}9 ({@damage 2d6 + 2}) piercing damage plus 3 ({@damage 1d6}) fire damage."]
+        },
+        {
+          "name": "Ember Spit",
+          "entries": ["{@atk rw} {@hit 4} to hit, range 30/90 ft., one target. {@h}7 ({@damage 2d4 + 2}) fire damage."]
+        },
+        {
+          "name": "Scorching Breath {@recharge 5}",
+          "entries": ["The hound exhales fire in a 15-foot cone. Each creature in that area must make a {@dc 13} Dexterity saving throw, taking 14 ({@damage 4d6}) fire damage on a failed save, or half as much damage on a successful one."]
+        }
+      ],
+      "reaction": [
+        {
+          "name": "Flare",
+          "entries": ["When hit by a melee attack, the hound deals 2 ({@damage 1d4}) fire damage to the attacker."]
+        }
+      ]
+    },
+    {
+      "name": "Hollow Acolyte",
+      "source": "TST",
+      "size": ["M"],
+      "type": "undead",
+      "alignment": ["L", "E"],
+      "ac": [13],
+      "hp": { "average": 27, "formula": "5d8 + 5" },
+      "speed": { "walk": 30 },
+      "str": 11, "dex": 13, "con": 12, "int": 10, "wis": 15, "cha": 12,
+      "cr": "1",
+      "immune": ["poison"],
+      "spellcasting": [
+        {
+          "name": "Spellcasting",
+          "headerEntries": ["The acolyte is a 3rd-level spellcaster. Its spellcasting ability is Wisdom (spell save {@dc 13}, {@hit 5} to hit with spell attacks). It has the following spells prepared:"],
+          "will": ["{@spell Grave Spark|TST}"],
+          "daily": { "2": ["{@spell Rot Bloom|TST}"] },
+          "ability": "wis"
+        }
+      ],
+      "action": [
+        {
+          "name": "Withering Touch",
+          "entries": ["{@atk ms} {@hit 5} to hit, reach 5 ft., one target. {@h}10 ({@damage 3d6}) necrotic damage."]
+        }
+      ]
+    },
+    {
+      "name": "Glass Sentinel",
+      "source": "TST",
+      "size": ["L"],
+      "type": "construct",
+      "ac": [17],
+      "hp": { "average": 95, "formula": "10d10 + 40" },
+      "speed": { "walk": 25 },
+      "str": 18, "dex": 9, "con": 18, "int": 3, "wis": 10, "cha": 1,
+      "cr": "5",
+      "immune": ["poison", "psychic"],
+      "action": [
+        {
+          "name": "Slam",
+          "entries": ["{@atk mw} {@hit 7} to hit, reach 10 ft., one target. {@h}15 ({@damage 2d10 + 4}) bludgeoning damage."]
+        },
+        {
+          "name": "Shard Burst",
+          "entries": ["Each creature within 10 feet must succeed on a {@dc 15} Constitution saving throw or be {@condition restrained} and take 10 ({@damage 3d6}) slashing damage."]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+# OS and editor cruft
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.swp
+.vscode/
+.idea/
+
+# Never commit game data. The apps read a 5etools folder you supply at
+# runtime; a copy sitting in here would end up in the repo.
+/data/
+**/data/5etools*
+*.vtcampaign.json
+
+# Scratch output from the supplement importer
+*.raw.txt

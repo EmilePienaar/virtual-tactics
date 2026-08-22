@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Virtual Tactics — TTRPG Play Space</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+
+  <header id="topbar">
+    <div class="brand"><span class="rune">&#9670;</span> VIRTUAL TACTICS</div>
+    <nav id="modes">
+      <button class="mode-btn" data-mode="play">Play</button>
+      <button class="mode-btn" data-mode="map">Map</button>
+      <button class="mode-btn" data-mode="roster">Roster</button>
+    </nav>
+    <div class="spacer"></div>
+    <div id="topActions">
+      <button class="tb" id="btnRotL" title="Rotate camera left (Q)">&#8630;</button>
+      <button class="tb" id="btnRotR" title="Rotate camera right (E)">&#8631;</button>
+      <button class="tb" id="btnCenter" title="Center camera (Home)">&#9678;</button>
+      <span class="divider"></span>
+      <a class="tb" href="builder/index.html" title="Character builder, creature editor and compendium">The Forge &#8594;</a>
+      <span class="divider"></span>
+      <button class="tb" id="btnSave" title="Save campaign to this browser">Save</button>
+      <button class="tb" id="btnExport" title="Download campaign file">Export</button>
+      <button class="tb" id="btnImport" title="Load campaign file">Import</button>
+      <button class="tb" id="btnSettings" title="Settings">&#9881;</button>
+    </div>
+  </header>
+
+  <div id="initStrip" class="hidden"></div>
+
+  <main id="main">
+    <div id="stageWrap">
+      <canvas id="stage"></canvas>
+      <div id="stageHint"></div>
+      <div id="floaters"></div>
+    </div>
+    <aside id="side"></aside>
+  </main>
+
+  <div id="bottom">
+    <div id="actionMenu" class="hidden"></div>
+    <div id="logPanel">
+      <div id="logHead">Chronicle</div>
+      <div id="logBody"></div>
+    </div>
+  </div>
+
+  <div id="tooltip" class="hidden"></div>
+  <div id="modalRoot"></div>
+</div>
+
+<input type="file" id="filePicker" class="hidden" accept="application/json">
+<input type="file" id="imgPicker" class="hidden" accept="image/*" multiple>
+
+<script src="src/core/util.js"></script>
+<script src="src/core/dice.js"></script>
+<script src="src/core/store.js"></script>
+<script src="src/map/iso.js"></script>
+<script src="src/map/gridmap.js"></script>
+<script src="src/map/path.js"></script>
+<script src="src/render/tileart.js"></script>
+<script src="src/render/spriteart.js"></script>
+<script src="src/render/camera.js"></script>
+<script src="src/render/renderer.js"></script>
+<script src="src/rules/srd.js"></script>
+<script src="src/data/currency.js"></script>
+<script src="src/data/upcast.js"></script>
+<script src="src/data/choices.js"></script>
+<script src="src/data/multiclass.js"></script>
+<script src="src/data/choicefx.js"></script>
+<script src="src/data/features.js"></script>
+<script src="src/rules/actor.js"></script>
+<script src="src/rules/combat.js"></script>
+<script src="src/rules/ai.js"></script>
+<script src="src/ui/ui.js"></script>
+<script src="src/ui/editor.js"></script>
+<script src="src/ui/sheet.js"></script>
+<script src="src/ui/sprites.js"></script>
+<script src="src/app.js"></script>
+</body>
+</html>

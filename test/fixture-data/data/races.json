@@ -1,0 +1,52 @@
+{
+  "_note": "Synthetic test fixture in the 5etools schema. Invented content only.",
+  "race": [
+    {
+      "name": "Emberkin",
+      "source": "TST",
+      "size": ["M"],
+      "speed": 30,
+      "ability": [{ "con": 2, "cha": 1 }],
+      "entries": [
+        { "type": "entries", "name": "Ashborn", "entries": ["You have resistance to fire damage."] },
+        { "type": "entries", "name": "Cinder Sight", "entries": ["You have {@sense darkvision} out to 60 feet."] }
+      ]
+    },
+    {
+      "name": "Stonewrought",
+      "source": "TST",
+      "size": ["S"],
+      "speed": { "walk": 25 },
+      "ability": [{ "str": 2, "wis": 1 }],
+      "entries": [
+        { "type": "entries", "name": "Grounded", "entries": ["You cannot be knocked {@condition prone} by nonmagical effects."] }
+      ]
+    },
+    {
+      "name": "Driftling",
+      "source": "TST",
+      "size": ["M"],
+      "speed": 35,
+      "ability": [{ "dex": 2, "int": 1 }],
+      "entries": [{ "type": "entries", "name": "Fleet", "entries": ["Your speed increases by 5 feet."] }]
+    }
+  ],
+  "subrace": [
+    {
+      "name": "Deep Ash",
+      "raceName": "Emberkin",
+      "raceSource": "TST",
+      "source": "TST",
+      "ability": [{ "str": 1 }],
+      "entries": [{ "type": "entries", "name": "Soot Lungs", "entries": ["You are immune to the {@condition poisoned} condition from smoke."] }]
+    },
+    {
+      "name": "Bright Ash",
+      "raceName": "Emberkin",
+      "raceSource": "TST",
+      "source": "TST",
+      "ability": [{ "dex": 1 }],
+      "entries": [{ "type": "entries", "name": "Sparkstep", "entries": ["You can Disengage as a bonus action."] }]
+    }
+  ]
+}
