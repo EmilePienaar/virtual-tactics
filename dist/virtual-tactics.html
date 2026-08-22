@@ -4550,8 +4550,21 @@ input[type=range]{width:100%;accent-color:var(--gold)}
       if (e.saveBonusAll) actor.saveBonusAll = Math.max(actor.saveBonusAll, e.saveBonusAll(actor));
       if (e.speedBonus) actor.speedBonus = Math.max(actor.speedBonus, e.speedBonus(actor));
       if (e.acFormula && !actor.armorName) {
-        var ac = e.acFormula(actor, className);
-        if (ac > actor.ac) { actor.ac = ac + (actor.shield ? 2 : 0); actor.acNote = 'Unarmored Defense'; }
+        var ac = e.acFormula(actor, className) + (actor.shield ? 2 : 0);
+        if (ac > actor.ac) {
+          actor.ac = ac;
+          actor.acNote = 'Unarmored Defense';
+          actor.acWhy = 'Unarmored Defense: 10' + U.sign(mod(actor, 'dex')) + ' DEX' +
+            U.sign(mod(actor, /monk/i.test(className || '') ? 'wis' : 'con')) +
+            (/monk/i.test(className || '') ? ' WIS' : ' CON') +
+            (actor.shield ? ' +2 shield' : '');
+        } else {
+          /* It applies, it is just not an improvement - which happens when the
+             ability scores behind it are low. Say so, rather than leaving the
+             feature looking as though it was ignored. */
+          actor.acNote = null;
+          actor.acWhyAlt = 'Unarmored Defense would give ' + ac + ', so plain AC is used instead.';
+        }
       }
     });
 

@@ -123,6 +123,7 @@
         return typeof r === 'string' ? { text: r } : r;
       });
       S.splitCodes = d.splitCodes || null;
+      S.lastLoot = d.lastLoot || null;
     }).catch(function () {});
   }
 
@@ -130,7 +131,7 @@
     TS.localStorage.campaign.setBlob(JSON.stringify({
       v: 1, shops: S.shops, openShopId: S.openShopId,
       currency: S.currency, receipts: S.receipts.slice(-40),
-      splitCodes: S.splitCodes
+      splitCodes: S.splitCodes, lastLoot: S.lastLoot || null
     })).catch(function (e) { toast('Could not save: ' + (e && e.cause || e), 'err'); });
   }, 400);
   function save() { saveSoon(); }
@@ -223,6 +224,11 @@
       if (msg.t === 'buy' && S.isGM) { handlePurchase(msg, from); return; }
       if (msg.t === 'receipt' && !S.isGM && msg.to === S.myClientId) {
         S.receipts.push({ text: msg.text, loot: msg.loot || null, at: Date.now() });
+        /* Put the code in front of them on the spot. Making someone find
+           another tab to collect what they just bought is a step that gets
+           forgotten, and if the clipboard is unavailable they need the text on
+           screen anyway. */
+        if (msg.loot) S.lastLoot = { text: msg.text, loot: msg.loot };
         save(); render();
         toast(msg.text, 'ok');
       }
@@ -998,6 +1004,22 @@
       return;
     }
 
+    /* what you just took, ready to copy, without leaving this tab */
+    if (S.lastLoot && S.lastLoot.loot) {
+      var got = el('div', { class: 'card' }, [
+        el('h3', {}, ['Collect what you took']),
+        el('div', { class: 'muted' }, [S.lastLoot.text])
+      ]);
+      got.appendChild(copyBox(S.lastLoot.loot,
+        'Copy this, then paste it into Tale Sheet under Inventory. Click the box to select it all.'));
+      got.appendChild(el('div', { class: 'btnrow' }, [
+        el('button', { class: 'btn sm', onClick: function () {
+          S.lastLoot = null; save(); render();
+        } }, ['Done'])
+      ]));
+      view.appendChild(got);
+    }
+
     var header = el('div', { class: 'card' }, [
       el('div', { class: 'keeper-row' }, [
         shop.free ? SHOPS.hoardArt(shop, 64, sys()) : keeperPortrait(shop, 64),
@@ -1097,6 +1119,12 @@
      screen, selected, ready for Ctrl+C. */
   function copyBox(code, label) {
     var ta = el('textarea', { class: 'lootcode', rows: 2, readonly: true, value: code });
+    /* Clicking the box selects all of it, so Ctrl+C works without dragging
+       across two lines of JSON. The button is a convenience on top of that,
+       never the only way in: clipboard permission is not granted everywhere,
+       and when it is refused the text still has to be gettable by hand. */
+    ta.addEventListener('focus', function () { ta.select(); });
+    ta.addEventListener('click', function () { ta.select(); });
     var btn = el('button', { class: 'btn sm primary' }, ['Copy']);
     btn.addEventListener('click', function () {
       ta.focus(); ta.select(); ta.setSelectionRange(0, code.length);
@@ -1111,7 +1139,9 @@
     });
     function flash(msg, cls) {
       btn.textContent = msg;
-      toast(msg === 'Copied' ? 'Copied — paste it into Tale Sheet' : msg, cls || 'ok');
+      toast(msg === 'Copied'
+        ? 'Copied — paste it into Tale Sheet'
+        : 'Could not reach the clipboard — click the code and press Ctrl+C', cls || 'ok');
       setTimeout(function () { btn.textContent = 'Copy'; }, 1400);
     }
     return el('div', { class: 'lootbox' }, [

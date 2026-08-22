@@ -40,19 +40,34 @@
     return out;
   }
 
+  /* AC, and a plain-English account of how it was reached.
+
+     Worth spelling out because the number alone is unfalsifiable: a character
+     built with unspent ability points looks identical to a correct one, just
+     worse, and there is no way to tell which without doing the arithmetic by
+     hand. The breakdown turns "my AC seems low" into something you can read. */
   function armourClass(actor, c) {
     var dexMod = SRD.mod(actor.abilities.dex);
-    var ac;
+    var ac, why;
     if (c.armor) {
       var kind = String(c.armor.type || '').split('|')[0];
       var base = c.armor.ac || 10;
-      ac = kind === 'HA' ? base
-         : kind === 'MA' ? base + Math.min(2, dexMod)
-         : base + dexMod;
+      if (kind === 'HA') { ac = base; why = c.armor.name + ' ' + base; }
+      else if (kind === 'MA') {
+        var capped = Math.min(2, dexMod);
+        ac = base + capped;
+        why = c.armor.name + ' ' + base + U.sign(capped) + ' DEX (capped at +2)';
+      } else {
+        ac = base + dexMod;
+        why = c.armor.name + ' ' + base + U.sign(dexMod) + ' DEX';
+      }
     } else {
       ac = 10 + dexMod;
+      why = '10' + U.sign(dexMod) + ' DEX (no armour)';
     }
-    return ac + (c.shield ? 2 : 0);
+    if (c.shield) { ac += 2; why += ' +2 shield'; }
+    actor.acWhy = why;
+    return ac;
   }
 
   /* Max hit die at 1st level, then the die's average rounded up - the
@@ -267,6 +282,10 @@
       : hitPoints(faces, level, conMod);
     a.hitDiceBreakdown = classes.length > 1 ? VT.multiclass.hitDice(a.classes) : null;
     a.hp = a.hpMax;
+    a.hpWhy = classes.length > 1
+      ? 'multiclass hit dice' + U.sign(conMod * level) + ' CON over ' + level + ' levels'
+      : 'd' + faces + U.sign(conMod) + ' at 1st, then ' + (level - 1) + ' x (' +
+        (Math.floor(faces / 2) + 1) + U.sign(conMod) + ' CON)';
     a.ac = armourClass(a, c);
     a.armorName = c.armor ? c.armor.name : '';
     a.shield = !!c.shield;

@@ -444,6 +444,21 @@
       who.appendChild(el('div', { class: 'muted', style: { textAlign: 'center' } }, ['AC ' + acWhy.join(', ')]));
     }
 
+    /* Where the numbers came from. A character built with ability points left
+       unspent looks exactly like a correct one, only worse, so the arithmetic
+       is worth showing rather than making someone reverse it by hand. */
+    if (a.acWhy || a.hpWhy) {
+      who.appendChild(el('div', { class: 'muted', style: { textAlign: 'center', fontSize: '10px' } }, [
+        [a.acWhy ? 'AC = ' + a.acWhy : null,
+         a.hpWhy ? 'HP = ' + a.hpWhy : null].filter(Boolean).join('   \u00b7   ')
+      ]));
+    }
+    if (a.acWhyAlt) {
+      who.appendChild(el('div', { class: 'muted', style: { textAlign: 'center', fontSize: '10px' } }, [
+        a.acWhyAlt
+      ]));
+    }
+
     /* hp */
     var frac = U.clamp(a.hp / Math.max(1, a.hpMax), 0, 1);
     who.appendChild(el('div', { class: 'hpbar' }, [
@@ -1230,12 +1245,39 @@
 
     /* preview + create */
     var preview = VT.charbuild.derive(b);
-    view.appendChild(el('div', { class: 'card' }, [
+    var pointsLeft = 27 - SRD.ABILITIES.reduce(function (n, k) {
+      return n + (POINT_COST[b.base[k]] || 0);
+    }, 0);
+    var asiDue = (preview.asiStatus && preview.asiStatus.earned) || 0;
+
+    var result = el('div', { class: 'card' }, [
       el('h3', {}, ['Result']),
       el('div', { class: 'bigstats' }, [
         stat('AC', preview.ac), stat('HP', preview.hpMax),
         stat('SPD', preview.speed), stat('ACTS', preview.actions.length)
       ]),
+      el('div', { class: 'muted', style: { textAlign: 'center', fontSize: '10px' } }, [
+        [preview.acWhy ? 'AC = ' + preview.acWhy : null,
+         preview.hpWhy ? 'HP = ' + preview.hpWhy : null].filter(Boolean).join('   \u00b7   ')
+      ]),
+      /* Every ability starts at 8 because that is where point buy starts. Left
+         alone it produces a legal but crippled character - so say so here,
+         where it can still be fixed, rather than letting it look like the
+         sheet miscalculated later. */
+      pointsLeft > 0
+        ? el('div', { class: 'warn', style: { marginTop: '8px' } }, [
+            pointsLeft + ' of 27 ability points are still unspent. Scores left at 8 give a ' +
+            (-1) + ' modifier, which is why AC and HP look low \u2014 spend them above, or ' +
+            'press Standard array.'
+          ])
+        : null,
+      asiDue > 0
+        ? el('div', { class: 'muted', style: { marginTop: '6px' } }, [
+            'At level ' + (b.level || 1) + ' this character has earned ' + asiDue +
+            ' ability score improvement' + (asiDue === 1 ? '' : 's') +
+            ' \u2014 assign ' + (asiDue === 1 ? 'it' : 'them') + ' on the Edit tab after creating.'
+          ])
+        : null,
       el('div', { class: 'btnrow', style: { marginTop: '10px' } }, [
         el('button', { class: 'btn primary', onClick: function () {
           var made = VT.charbuild.derive(b);
@@ -1250,7 +1292,8 @@
         } }, ['Create character']),
         el('button', { class: 'btn', onClick: function () { S.build = null; render(); } }, ['Reset'])
       ])
-    ]));
+    ]);
+    view.appendChild(result);
   }
 
   function labelled(text, ctrl) {
