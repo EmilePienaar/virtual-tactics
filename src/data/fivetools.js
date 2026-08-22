@@ -277,6 +277,10 @@
       ft.mode = prev.mode; ft.baseUrl = prev.baseUrl; ft.dirName = prev.dirName;
       ft.spellLists = prev.spellLists;
       ft.loot = prev.loot;
+      /* hbBundled is deliberately untouched: it came from beside the app, not
+         from the source being rolled back, and losing it here would make a
+         failed data load silently drop a supplement that is still present. */
+      mergeHomebrew();
     }
 
     ft.db = {}; ft.index = {}; ft.sources = {};
@@ -499,13 +503,23 @@
   /* User content is held separately from the loaded book data and re-merged
      after every load, so reloading or switching your source never wipes it.
 
-     There are two ways in, and they are kept apart so neither can erase the
-     other: `stored` is what this browser saved (the Forge's Homebrew tab), and
-     `folder` is whatever was found in a homebrew/ directory inside the data
-     source itself. The folder path is the one that matters at a table - drop a
-     converted supplement next to your 5etools data and every app that reads
-     that folder gets it, with nothing to import on each machine. */
-  var hbStored = {}, hbFolder = {};
+     There are three ways in, kept apart so none can erase another:
+
+       stored   what this browser saved (the Forge's Homebrew tab)
+       folder   a homebrew/ directory inside the data source itself
+       bundled  a homebrew/ directory beside the app's own files
+
+     `folder` is the one that matters when a table shares a data folder: drop a
+     converted supplement next to your 5etools data and every app pointed there
+     gets it, with nothing to import per machine.
+
+     `bundled` covers what folder cannot. It is read relative to the app rather
+     than the data source, so a supplement travels with the download and is
+     there before anyone has connected anything. It needs no directory picker
+     and no filesystem API, which matters on Linux and in any browser without
+     showDirectoryPicker - fetching a file sitting next to the page is the one
+     thing that works everywhere. */
+  var hbStored = {}, hbFolder = {}, hbBundled = {};
 
   function setHomebrew(map) {
     hbStored = map || {};
@@ -517,9 +531,14 @@
     mergeHomebrew();
   }
 
+  function setBundledHomebrew(map) {
+    hbBundled = map || {};
+    mergeHomebrew();
+  }
+
   function mergeHomebrew() {
     var out = {};
-    [hbFolder, hbStored].forEach(function (src) {
+    [hbBundled, hbFolder, hbStored].forEach(function (src) {
       Object.keys(src || {}).forEach(function (kind) {
         out[kind] = (out[kind] || []).concat(src[kind] || []);
       });
@@ -540,6 +559,28 @@
     creature: ['monster'], spelllistchange: ['spelllistchange', 'spellListChange']
   };
 
+  /* Pull every record out of one homebrew file into `map`, returning how many.
+     A file may be our own export ({data:{...}}) or a raw 5etools-shaped one. */
+  function collectHomebrew(json, map) {
+    var incoming = (json && json.data) ? json.data : json;
+    if (!incoming || typeof incoming !== 'object') return 0;
+    var records = 0;
+    Object.keys(HB_KEYS).forEach(function (kind) {
+      HB_KEYS[kind].forEach(function (key) {
+        if (!Array.isArray(incoming[key])) return;
+        incoming[key].forEach(function (r) {
+          if (!r || (!r.name && !(kind === 'subrace' && r.raceName))) return;
+          var c = JSON.parse(JSON.stringify(r));
+          c.__hb = true;
+          c.source = c.source || 'HB';
+          (map[kind] = map[kind] || []).push(c);
+          records++;
+        });
+      });
+    });
+    return records;
+  }
+
   function loadFolderHomebrew() {
     return listHomebrewFiles()
       .then(function (names) {
@@ -547,23 +588,7 @@
         var map = {}, records = 0;
         return runLimited(names, 4, function (name) {
           return readJSON('homebrew/' + name)
-            .then(function (json) {
-              var incoming = (json && json.data) ? json.data : json;
-              if (!incoming || typeof incoming !== 'object') return;
-              Object.keys(HB_KEYS).forEach(function (kind) {
-                HB_KEYS[kind].forEach(function (key) {
-                  if (!Array.isArray(incoming[key])) return;
-                  incoming[key].forEach(function (r) {
-                    if (!r || (!r.name && !(kind === 'subrace' && r.raceName))) return;
-                    var c = JSON.parse(JSON.stringify(r));
-                    c.__hb = true;
-                    c.source = c.source || 'HB';
-                    (map[kind] = map[kind] || []).push(c);
-                    records++;
-                  });
-                });
-              });
-            })
+            .then(function (json) { records += collectHomebrew(json, map); })
             .catch(function () {});
         }).then(function () {
           setFolderHomebrew(map);
@@ -571,6 +596,76 @@
         });
       })
       .catch(function () { setFolderHomebrew({}); return { files: 0, records: 0 }; });
+  }
+
+  /* Where the app's own files live, whatever scheme served the page. */
+  function appBase() {
+    try { return new URL('.', window.location.href).href; } catch (e) { return './'; }
+  }
+
+  /* Read homebrew/ from beside the app rather than from the data source.
+
+     There is no directory listing over http, so homebrew/index.json names the
+     files - 5etools' own convention, and the same one the folder loader falls
+     back to. A missing index is the normal case and stays silent: most installs
+     ship no bundled homebrew at all. */
+  var bundledOnce = null;
+
+  /* Safe to call from every boot path - the work happens once and later calls
+     get the same promise. Deliberately independent of loadAll: this content
+     sits beside the app, not beside the data, so it must survive a data source
+     that is missing, empty or still being chosen. */
+  function loadBundledHomebrew(force) {
+    if (bundledOnce && !force) return bundledOnce;
+    bundledOnce = reallyLoadBundledHomebrew();
+    return bundledOnce;
+  }
+
+  function reallyLoadBundledHomebrew() {
+    /* A symbiote has homebrew/ right beside it. The Forge is served out of
+       builder/, and the single-file build out of dist/, so for those it is one
+       level up. Try the app's own directory first, then its parent, and use
+       whichever has an index - checking two places costs one failed fetch and
+       saves explaining which layout you have. */
+    var bases = [appBase(), appBase() + '../'];
+
+    function grab(base, rel) {
+      return fetch(base + rel, { cache: 'no-cache' }).then(function (r) {
+        if (!r.ok) throw new Error('missing');
+        return r.json();
+      });
+    }
+
+    function tryBase(i) {
+      if (i >= bases.length) return Promise.resolve(null);
+      return grab(bases[i], 'homebrew/index.json')
+        .then(function (idx) { return { base: bases[i], idx: idx }; })
+        .catch(function () { return tryBase(i + 1); });
+    }
+
+    return tryBase(0)
+      .then(function (found) {
+        if (!found) { setBundledHomebrew({}); return { files: 0, records: 0 }; }
+        var idx = found.idx;
+        var names = Array.isArray(idx) ? idx
+          : (idx && Array.isArray(idx.toImport)) ? idx.toImport : [];
+        if (!names.length) { setBundledHomebrew({}); return { files: 0, records: 0 }; }
+        var map = {}, records = 0, read = 0;
+        return runLimited(names, 4, function (name) {
+          return grab(found.base, 'homebrew/' + name)
+            .then(function (json) { records += collectHomebrew(json, map); read++; })
+            .catch(function () {});
+        }).then(function () {
+          setBundledHomebrew(map);
+          ft.bundledHomebrew = { files: read, records: records, from: found.base + 'homebrew/' };
+          return ft.bundledHomebrew;
+        });
+      })
+      .catch(function () {
+        setBundledHomebrew({});
+        ft.bundledHomebrew = { files: 0, records: 0 };
+        return { files: 0, records: 0 };
+      });
   }
 
   function listHomebrewFiles() {
@@ -714,6 +809,7 @@
                           spellLists: ft.spellLists || null,
                           loot: ft.loot || null,
                           folderHomebrew: hbFolder,
+                          bundledHomebrew: hbBundled,
                           mode: ft.mode, base: ft.baseUrl, dirName: ft.dirName || null })
       .then(function () { return true; })
       .catch(function () { return false; });
@@ -725,6 +821,7 @@
       ft.spellLists = rec.spellLists || null;
       ft.loot = rec.loot || null;
       hbFolder = rec.folderHomebrew || {};
+      hbBundled = rec.bundledHomebrew || {};
       ft.mode = rec.mode; ft.baseUrl = rec.base || '';
       ft.dirName = rec.dirName || null;
       ft.cachedAt = rec.at || null;
@@ -893,6 +990,7 @@
     saveCache: saveCache, loadCache: loadCache, clearCache: clearCache,
     setHomebrew: setHomebrew, applyHomebrew: applyHomebrew,
     setFolderHomebrew: setFolderHomebrew, loadFolderHomebrew: loadFolderHomebrew,
+    loadBundledHomebrew: loadBundledHomebrew,
     folderHomebrewCount: function () {
       return Object.keys(hbFolder).reduce(function (n, k) { return n + hbFolder[k].length; }, 0);
     },

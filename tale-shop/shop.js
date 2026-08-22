@@ -83,6 +83,16 @@
   }
 
   function autoConnectData() {
+    /* Homebrew shipped beside this symbiote loads whatever happens - it does
+       not depend on a data source being connected, and needs no picker, so it
+       is the one route that works identically on every OS and browser. */
+    FT.loadBundledHomebrew().then(function (r) {
+      if (r && r.records) {
+        TS.debug.log('bundled homebrew: ' + r.records + ' records from ' + r.files + ' file(s)');
+        render();
+      }
+    }).catch(function () {});
+
     if (FT.loaded) return;
     FT.reconnectDirectory().then(function (r) {
       if (r && r.ok) return quietLoad();

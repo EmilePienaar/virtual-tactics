@@ -21,7 +21,18 @@ Policy; this is a local conversion of it for one table's own use.
 
 ## Loading it
 
-**Best: put it in your 5etools data folder.** Copy `dark-sun.vthb.json` into a
+**It already ships with the symbiotes.** `tools/build-symbiote.js` copies this
+folder into `dist/tale-sheet/` and `dist/tale-shop/`, and each symbiote reads
+`homebrew/` from beside its own files on boot. Nothing to connect, nothing to
+import, no directory picker — which is what makes it the one route that behaves
+identically on every OS and in every browser. `index.json` names the files to
+load, because http offers no directory listing.
+
+To ship something else the same way, drop its `.json` in here and add it to
+`index.json`. The build fails loudly if `index.json` names a file that is not
+there.
+
+**Or put it in your 5etools data folder.** Copy `dark-sun.vthb.json` into a
 `homebrew/` folder beside `data/`, and the Forge, the Tale Sheet symbiote and
 every other machine pointed at that folder pick it up automatically. Nothing to
 import per device, and it survives a reload because it is cached with the rest.

@@ -1,0 +1,6 @@
+{
+  "_note": "5etools' own convention: names the files to load, since http gives no directory listing. Anything listed here is picked up automatically by any app that ships this folder beside it.",
+  "toImport": [
+    "dark-sun.vthb.json"
+  ]
+}

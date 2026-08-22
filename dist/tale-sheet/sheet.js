@@ -88,6 +88,16 @@
        3. a data/ folder shipped alongside -> read it in place
      Only if all three miss does the Setup tab ask for anything. */
   function autoConnectData() {
+    /* Homebrew shipped beside this symbiote loads whatever happens - it does
+       not depend on a data source being connected, and needs no picker, so it
+       is the one route that works identically on every OS and browser. */
+    FT.loadBundledHomebrew().then(function (r) {
+      if (r && r.records) {
+        TS.debug.log('bundled homebrew: ' + r.records + ' records from ' + r.files + ' file(s)');
+        render();
+      }
+    }).catch(function () {});
+
     if (FT.loaded) return;
     FT.reconnectDirectory().then(function (r) {
       if (r && r.ok) return quietLoad('remembered folder “' + r.name + '”');
@@ -1318,6 +1328,23 @@
         : 'Drop your 5etools data folder next to this symbiote and press “Use bundled ./data” — ' +
           'that survives restarts with no dialog at all.'
     ]));
+
+    /* Homebrew that shipped with the symbiote. Nothing to connect and nothing
+       to import - it is read from a folder beside these files, which is the one
+       route that needs no picker and no filesystem API, so it behaves the same
+       on Windows, Linux and anything else. */
+    var bhb = FT.bundledHomebrew;
+    if (bhb && bhb.records) {
+      box.appendChild(el('div', { class: 'ok', style: { marginTop: '8px' } }, [
+        'Bundled homebrew: ' + bhb.records + ' records from ' + bhb.files +
+        (bhb.files === 1 ? ' file' : ' files') + ' shipped beside this symbiote.'
+      ]));
+    } else {
+      box.appendChild(el('p', { class: 'muted' }, [
+        'No bundled homebrew. To ship a supplement with this symbiote, put its ' +
+        '.json in a homebrew/ folder here and name it in homebrew/index.json.'
+      ]));
+    }
     view.appendChild(box);
 
     /* board integration */
@@ -1371,15 +1398,21 @@
     ]));
   }
 
-  /* Converted supplements. Two ways in, because a table has two situations:
-     a homebrew/ folder inside the 5etools data everyone already points at, and
-     a one-off file someone sends you. The folder is the one worth using - it
-     needs nothing done on each machine. */
+  /* Converted supplements. Three ways in, because a table has three
+     situations: shipped alongside the symbiote, sitting in a homebrew/ folder
+     inside the 5etools data everyone points at, or a one-off file someone
+     sends you. The first needs nothing done at all. */
   function homebrewCard() {
     var card = el('div', { class: 'card' }, [el('h3', {}, ['Homebrew'])]);
     var fromFolder = FT.folderHomebrewCount ? FT.folderHomebrewCount() : 0;
     var stored = VT.homebrew ? VT.homebrew.count() : 0;
+    var bundled = (FT.bundledHomebrew && FT.bundledHomebrew.records) || 0;
 
+    if (bundled) {
+      card.appendChild(el('div', { class: 'ok' }, [
+        bundled + ' records shipped with this symbiote, loaded automatically.'
+      ]));
+    }
     if (fromFolder) {
       card.appendChild(el('div', { class: 'ok' }, [
         fromFolder + ' records loaded from the homebrew folder in your data source.'
@@ -1390,7 +1423,7 @@
         stored + ' records imported into this copy of the symbiote.'
       ]));
     }
-    if (!fromFolder && !stored) {
+    if (!bundled && !fromFolder && !stored) {
       card.appendChild(el('div', { class: 'muted' }, [
         'None loaded. Put a converted supplement in a "homebrew" folder inside ' +
         'your 5etools data and every device that reads it gets the content — ' +

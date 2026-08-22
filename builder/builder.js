@@ -51,6 +51,19 @@
          2. silently re-acquire a remembered directory handle, so Reload works
          3. if there is no cache but the handle is still granted, just read it
          4. only if all of that fails do we interrupt with the dialog */
+    /* Homebrew sitting in a homebrew/ folder beside this page loads regardless
+       of any of that: no picker, no filesystem API, no per-machine import. Over
+       file:// the browser blocks the fetch, so it needs the page to be served -
+       which is the same condition the remembered folder already has. */
+    FT.loadBundledHomebrew()
+      .then(function (r) {
+        if (r && r.records) {
+          note('Bundled homebrew: ' + fmtInt(r.records) + ' records from ' +
+               r.files + ' file(s) beside the app.');
+        }
+      })
+      .catch(function () {});
+
     FT.loadCache()
       .then(function (rec) {
         return FT.reconnectDirectory().then(function (fs) { return { rec: rec, fs: fs }; });

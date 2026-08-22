@@ -54,11 +54,17 @@ C:\Users\<your name>\AppData\LocalLow\BouncyRock Entertainment\TaleSpire\Symbiot
 
 **3. Add your data.** Copy your 5etools `data` folder *inside* each of those two
 folders, so you end up with `Symbiotes\tale-sheet\data\`. This is the easiest
-option by far — the symbiote finds it on its own and never asks you anything.
+option by far — the symbiote finds it on its own, never asks you anything, and
+works the same on Windows, Linux and macOS.
 
 *(If you'd rather not duplicate it, open the symbiote's **Setup** tab and use
-**Choose folder & remember…** instead. It's one click the first time and none
-after that.)*
+**Choose folder & remember…** instead. One click the first time and none after
+that — but that button only exists in Chrome and Edge. On Firefox use **Choose
+data folder…**, or the bundled folder above.)*
+
+Dark Sun already ships inside each symbiote in its own `homebrew/` folder, so
+there is nothing to do for it — Setup will say "310 records shipped with this
+symbiote".
 
 **4. Restart TaleSpire** and add the symbiotes from the symbiote menu.
 
@@ -159,6 +165,11 @@ the symbiote's folder as in step 3.)
 
 **"It says it can't read my folder."** Pick the folder that *contains* `data/`, or
 `data/` itself — not one above them.
+
+**"I'm on Linux / Firefox and there's no 'remember folder' button."** That button
+uses an API only Chrome and Edge have. Everything else works everywhere: put the
+`data` folder inside the symbiote folder (step 3), use **Choose data folder…**,
+or point it at a URL. Nothing here is Windows-only.
 
 **"The symbiote doesn't appear in TaleSpire."** Check the folder went in whole —
 `Symbiotes\tale-sheet\manifest.json` should exist — and restart TaleSpire.

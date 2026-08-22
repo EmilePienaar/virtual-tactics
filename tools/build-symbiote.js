@@ -75,6 +75,35 @@ function build(name) {
     fs.copyFileSync(from, path.join(OUT, f));
   }
 
+  /* homebrew/ travels with the symbiote.
+
+     The 5etools data cannot ship - that is the whole point of the runtime data
+     source - but a converted supplement can, and putting it here means it needs
+     no directory picker, no filesystem API and no per-machine import. Fetching
+     a file next to the page is the only thing that works in every browser on
+     every OS, which is what makes this the answer for anyone the folder picker
+     does not serve.
+
+     index.json names what to load; without it the loader finds nothing, since
+     http offers no directory listing. */
+  const HB_SRC = path.join(ROOT, 'homebrew');
+  if (fs.existsSync(path.join(HB_SRC, 'index.json'))) {
+    const idx = JSON.parse(fs.readFileSync(path.join(HB_SRC, 'index.json'), 'utf8'));
+    const wanted = (idx.toImport || []).filter(f => fs.existsSync(path.join(HB_SRC, f)));
+    const stale = (idx.toImport || []).filter(f => !fs.existsSync(path.join(HB_SRC, f)));
+    if (stale.length) {
+      console.error('ERROR [' + name + ']: homebrew/index.json lists missing files:', stale);
+      process.exit(1);
+    }
+    if (wanted.length) {
+      const HB_OUT = path.join(OUT, 'homebrew');
+      fs.mkdirSync(HB_OUT, { recursive: true });
+      fs.copyFileSync(path.join(HB_SRC, 'index.json'), path.join(HB_OUT, 'index.json'));
+      for (const f of wanted) fs.copyFileSync(path.join(HB_SRC, f), path.join(HB_OUT, f));
+      HB_SHIPPED[name] = wanted;
+    }
+  }
+
   /* sanity: the entry point must be self-contained and complete */
   const manifest = JSON.parse(fs.readFileSync(path.join(OUT, 'manifest.json'), 'utf8'));
   const entry = manifest.entryPoint.replace(/^\//, '');
@@ -114,13 +143,17 @@ function build(name) {
   }
   INTEROP_SEEN[name] = interop;
 
-  const files = fs.readdirSync(OUT);
-  const size = files.reduce((n, f) => n + fs.statSync(path.join(OUT, f)).size, 0);
+  const files = fs.readdirSync(OUT).filter(f => !fs.statSync(path.join(OUT, f)).isDirectory());
+  let size = files.reduce((n, f) => n + fs.statSync(path.join(OUT, f)).size, 0);
+  const hb = HB_SHIPPED[name] || [];
+  for (const f of hb) size += fs.statSync(path.join(OUT, 'homebrew', f)).size;
   console.log('Wrote dist/' + name + '/  "' + manifest.name + '"  (' +
-    files.length + ' files, ' + (size / 1024).toFixed(0) + ' KB)');
+    files.length + ' files, ' + (size / 1024).toFixed(0) + ' KB' +
+    (hb.length ? ', + ' + hb.length + ' homebrew' : '') + ')');
 }
 
 const INTEROP_SEEN = {};
+const HB_SHIPPED = {};
 SYMBIOTES.forEach(build);
 
 /* Two symbiotes sharing an interop id is how the API lets them message each
