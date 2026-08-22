@@ -172,10 +172,16 @@
   }
 
   /* Resolve a stored feature back to its printed text, when the data is loaded. */
-  function featureText(feature, className) {
+  /* The feature list carried on an actor is deliberately thin - a name and a
+     level - so a saved character does not haul the whole printed text of forty
+     features around with it. Anything that needs the prose looks it back up. */
+  function featureRecord(feature, className) {
     var FT = VT.fivetools;
-    if (!FT || !FT.get) return '';
-    var pools = feature.subclass ? ['subclassfeature'] : ['classfeature'];
+    if (!FT || !FT.get || !feature) return null;
+    /* A subclass feature can be listed without the flag being set, so check
+       both pools rather than trusting it. */
+    var pools = feature.subclass ? ['subclassfeature', 'classfeature']
+                                 : ['classfeature', 'subclassfeature'];
     var hit = null;
     pools.forEach(function (kind) {
       if (hit) return;
@@ -185,6 +191,22 @@
           (!className || String(f.className || '').toLowerCase() === String(className).toLowerCase());
       }) || null;
     });
+    /* Last resort: name and level alone. A subclass feature's className is the
+       parent class, but homebrew is not always so tidy. */
+    if (!hit) {
+      pools.forEach(function (kind) {
+        if (hit) return;
+        hit = (FT.get(kind) || []).find(function (f) {
+          return String(f.name).toLowerCase() === String(feature.name).toLowerCase() &&
+            (f.level || 1) === feature.level;
+        }) || null;
+      });
+    }
+    return hit;
+  }
+
+  function featureText(feature, className) {
+    var hit = featureRecord(feature, className);
     return hit ? VT.tags.toText(hit.entries) : '';
   }
 
@@ -604,6 +626,6 @@
     relevelClass: relevelClass, addClassLevel: addClassLevel,
     classesOf: classesOf, totalLevelOf: totalLevelOf,
     subclassFor: subclassFor,
-    featuresFor: featuresFor, featureText: featureText, asiStatus: asiStatus, isASI: isASI
+    featuresFor: featuresFor, featureText: featureText, featureRecord: featureRecord, asiStatus: asiStatus, isASI: isASI
   };
 })();

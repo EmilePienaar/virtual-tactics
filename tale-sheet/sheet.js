@@ -1009,11 +1009,16 @@
   }
 
   function describe(act) {
-    if (act.kind === 'melee') return 'melee ' + (act.reach || 5) + 'ft ' + (act.dmgType || '');
-    if (act.kind === 'ranged') return 'ranged ' + (act.range ? act.range[0] + '/' + act.range[1] : '') + 'ft';
+    /* Actions read out of a feature's printed text are marked, because they
+       were inferred rather than hand-checked: the reader abstains when it is
+       unsure, but "confident" is not "correct", and the player should know
+       which numbers to glance at before trusting them. */
+    var mark = act.derived ? ' · read from text' : '';
+    if (act.kind === 'melee') return 'melee ' + (act.reach || 5) + 'ft ' + (act.dmgType || '') + mark;
+    if (act.kind === 'ranged') return 'ranged ' + (act.range ? act.range[0] + '/' + act.range[1] : '') + 'ft' + mark;
     if (act.kind === 'save') return (act.autoHit ? 'hits automatically'
       : String(act.save || '').toUpperCase() + ' save') +
-      (act.aoe ? ' · ' + act.aoe.radius + 'ft' : '');
+      (act.aoe ? ' · ' + act.aoe.radius + 'ft' : '') + mark;
     if (act.kind === 'heal') return 'healing';
     return act.condition || act.kind;
   }

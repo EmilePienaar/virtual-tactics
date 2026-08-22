@@ -93,6 +93,12 @@ Day to day:
 - **Resources** — spell slots, Ki, Rage, Bardic Inspiration, Channel Divinity,
   Superiority Dice, Lay on Hands, Action Surge. Short and long rests restore the
   right ones; a short rest lets you spend hit dice, which roll in the tray.
+- **Class features become rollable actions** where they can be. The common ones
+  are hand-written; beyond those, attack and saving-throw features are read out
+  of their own printed text — Radiant Sun Bolt, Quivering Palm and around thirty
+  others turn into buttons that roll. Anything inferred that way is labelled
+  *read from text*, so you know which numbers to check. Features it cannot read
+  confidently are left as printed text rather than guessed at.
 - **Death saves** are tracked as you roll them — three and three, judged on the
   face of the die, so a natural 20 puts you back up.
 - **Coin and inventory** — a purse that takes "12 gp 5 sp" and refuses what you

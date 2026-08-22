@@ -2,14 +2,19 @@
    Mechanical effects for class features.
 
    5etools stores features as prose — there is no machine-readable "this grants
-   expertise in two skills" field anywhere in the data, and no amount of parsing
-   will reliably extract one from English. So this is a curated table: the core
-   features of the PHB classes, mapped to a small vocabulary of effects the
-   sheet can actually apply.
+   expertise in two skills" field anywhere in the data. So this is a curated
+   table: the core features of the PHB classes, mapped to a small vocabulary of
+   effects the sheet can actually apply.
 
-   Everything NOT in this table still appears on the sheet with its full printed
-   text — it simply is not wired to anything. That is the honest split, and the
-   table is plain data, so adding an entry is a two-line change.
+   Anything with no entry here falls through to data/featuretext.js, which reads
+   the printed text for the two shapes that ARE written predictably — attacks
+   and saving-throw effects — and builds an action when every part is stated.
+   That covers a further thirty-odd features, Radiant Sun Bolt among them,
+   without anyone hand-writing them.
+
+   Whatever neither of those catches still appears on the sheet with its full
+   printed text, unwired. That is the honest split, and this table is plain
+   data, so adding an entry is a two-line change.
 
    Effect vocabulary:
      resource     a tracked pool (Ki, Rage, Bardic Inspiration...)
@@ -25,6 +30,20 @@
   var VT = window.VT, U = VT.util, SRD = VT.srd;
 
   function mod(a, k) { return SRD.mod(a.abilities[k] || 10); }
+
+  /* Some classes set a save DC without casting anything - the monk's Ki save
+     DC is the common one, and its features lean on it without restating it.
+     Only classes whose rules actually define such a DC are listed; for anyone
+     else the answer is nothing, so the reader abstains rather than inventing
+     a number. */
+  var CLASS_DC_ABILITY = { monk: 'wis' };
+
+  function classSaveDC(actor, className) {
+    var key = String(className || '').toLowerCase().split(' ')[0];
+    var ability = CLASS_DC_ABILITY[key];
+    if (!ability) return null;
+    return 8 + VT.actor.prof(actor) + mod(actor, ability);
+  }
   function lvl(a) { return a.level || 1; }
   function byLevel(pairs, level) {
     /* pairs: [[minLevel, value], ...] highest matching wins */
@@ -253,6 +272,7 @@
     var resources = [];
     var featureActions = [];
     var notes = {};
+    var derivedCount = 0;      /* actions read from prose rather than curated */
 
     actor.expertiseSlots = 0;
     actor.jackOfAllTrades = false;
@@ -268,6 +288,34 @@
       /* A class-scoped entry wins over the generic one: Channel Divinity is a
          different number of uses for a cleric and a paladin. */
       var e = EFFECTS[key + '|' + lowClass.split(' ')[0]] || EFFECTS[key];
+
+      /* Nothing hand-written for this one: try reading an action straight out
+         of its printed text. Only attacks and saving-throw effects are written
+         predictably enough to be worth it, and featuretext only answers when
+         every part was found - so most features still fall through to their
+         prose, which is the honest outcome. */
+      if (!e || (!e.actions && !e.resource)) {
+        /* The actor's feature list carries a name and a level, not the prose,
+           so fetch the source record before trying to read anything out of it. */
+        var rec = (VT.charbuild && VT.charbuild.featureRecord)
+          ? VT.charbuild.featureRecord(f, f.className || className) : null;
+        var read = rec && VT.featureText && VT.featureText.toAction(rec, {
+          level: lvl(actor),
+          prof: VT.actor.prof(actor),
+          abilities: actor.abilities,
+          castAbility: actor.castAbility,
+          saveDC: actor.spellDC,
+          classDC: classSaveDC(actor, f.className || className)
+        });
+        if (read && !featureActions.some(function (x) { return x.name === read.name; })) {
+          featureActions.push(read);
+          if (!notes[f.name]) {
+            notes[f.name] = 'Read from the printed text and added to your actions.';
+          }
+          derivedCount++;
+        }
+      }
+
       if (!e) return;
       if (e.cls && lowClass.indexOf(e.cls) < 0) return;
 
@@ -374,6 +422,7 @@
     });
 
     actor.featureNotes = notes;
+    actor.derivedActionCount = derivedCount;
     actor.expertise = (choices.expertise || actor.expertise || [])
       .slice(0, actor.expertiseSlots);
     return actor;

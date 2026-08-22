@@ -3519,14 +3519,19 @@
    Mechanical effects for class features.
 
    5etools stores features as prose — there is no machine-readable "this grants
-   expertise in two skills" field anywhere in the data, and no amount of parsing
-   will reliably extract one from English. So this is a curated table: the core
-   features of the PHB classes, mapped to a small vocabulary of effects the
-   sheet can actually apply.
+   expertise in two skills" field anywhere in the data. So this is a curated
+   table: the core features of the PHB classes, mapped to a small vocabulary of
+   effects the sheet can actually apply.
 
-   Everything NOT in this table still appears on the sheet with its full printed
-   text — it simply is not wired to anything. That is the honest split, and the
-   table is plain data, so adding an entry is a two-line change.
+   Anything with no entry here falls through to data/featuretext.js, which reads
+   the printed text for the two shapes that ARE written predictably — attacks
+   and saving-throw effects — and builds an action when every part is stated.
+   That covers a further thirty-odd features, Radiant Sun Bolt among them,
+   without anyone hand-writing them.
+
+   Whatever neither of those catches still appears on the sheet with its full
+   printed text, unwired. That is the honest split, and this table is plain
+   data, so adding an entry is a two-line change.
 
    Effect vocabulary:
      resource     a tracked pool (Ki, Rage, Bardic Inspiration...)
@@ -3542,6 +3547,20 @@
   var VT = window.VT, U = VT.util, SRD = VT.srd;
 
   function mod(a, k) { return SRD.mod(a.abilities[k] || 10); }
+
+  /* Some classes set a save DC without casting anything - the monk's Ki save
+     DC is the common one, and its features lean on it without restating it.
+     Only classes whose rules actually define such a DC are listed; for anyone
+     else the answer is nothing, so the reader abstains rather than inventing
+     a number. */
+  var CLASS_DC_ABILITY = { monk: 'wis' };
+
+  function classSaveDC(actor, className) {
+    var key = String(className || '').toLowerCase().split(' ')[0];
+    var ability = CLASS_DC_ABILITY[key];
+    if (!ability) return null;
+    return 8 + VT.actor.prof(actor) + mod(actor, ability);
+  }
   function lvl(a) { return a.level || 1; }
   function byLevel(pairs, level) {
     /* pairs: [[minLevel, value], ...] highest matching wins */
@@ -3770,6 +3789,7 @@
     var resources = [];
     var featureActions = [];
     var notes = {};
+    var derivedCount = 0;      /* actions read from prose rather than curated */
 
     actor.expertiseSlots = 0;
     actor.jackOfAllTrades = false;
@@ -3785,6 +3805,34 @@
       /* A class-scoped entry wins over the generic one: Channel Divinity is a
          different number of uses for a cleric and a paladin. */
       var e = EFFECTS[key + '|' + lowClass.split(' ')[0]] || EFFECTS[key];
+
+      /* Nothing hand-written for this one: try reading an action straight out
+         of its printed text. Only attacks and saving-throw effects are written
+         predictably enough to be worth it, and featuretext only answers when
+         every part was found - so most features still fall through to their
+         prose, which is the honest outcome. */
+      if (!e || (!e.actions && !e.resource)) {
+        /* The actor's feature list carries a name and a level, not the prose,
+           so fetch the source record before trying to read anything out of it. */
+        var rec = (VT.charbuild && VT.charbuild.featureRecord)
+          ? VT.charbuild.featureRecord(f, f.className || className) : null;
+        var read = rec && VT.featureText && VT.featureText.toAction(rec, {
+          level: lvl(actor),
+          prof: VT.actor.prof(actor),
+          abilities: actor.abilities,
+          castAbility: actor.castAbility,
+          saveDC: actor.spellDC,
+          classDC: classSaveDC(actor, f.className || className)
+        });
+        if (read && !featureActions.some(function (x) { return x.name === read.name; })) {
+          featureActions.push(read);
+          if (!notes[f.name]) {
+            notes[f.name] = 'Read from the printed text and added to your actions.';
+          }
+          derivedCount++;
+        }
+      }
+
       if (!e) return;
       if (e.cls && lowClass.indexOf(e.cls) < 0) return;
 
@@ -3891,6 +3939,7 @@
     });
 
     actor.featureNotes = notes;
+    actor.derivedActionCount = derivedCount;
     actor.expertise = (choices.expertise || actor.expertise || [])
       .slice(0, actor.expertiseSlots);
     return actor;
@@ -3973,6 +4022,285 @@
     spend: spend, restore: restore, rest: rest, slotsLeft: slotsLeft, pactLeft: pactLeft,
     bardicDie: bardicDie, martialArtsDie: martialArtsDie, sneakDice: sneakDice,
     covered: Object.keys(EFFECTS).length
+  };
+})();
+
+/* ===== src/data/featuretext.js ===== */
+/* Virtual Tactics :: data/featuretext.js
+   Reading rollable actions out of the printed text of a class feature.
+
+   features.js is a curated table: hand-written mechanics for the features worth
+   the effort. It says, correctly, that no amount of parsing will reliably turn
+   English into arbitrary game effects - you cannot read "you gain expertise in
+   two skills of your choice" out of prose and be sure of it.
+
+   But two shapes are not arbitrary. Attacks and saving-throw effects are
+   written to a house style that barely varies across twenty years of books:
+
+     "a ranged spell attack with a range of 30 feet ... you add your Dexterity
+      modifier to its attack and damage rolls ... its damage is radiant, and
+      its damage die is a d4"
+
+     "each creature in that area must make a Dexterity saving throw, taking
+      3d6 fire damage on a failed save"
+
+   Everything needed for a clickable action is stated outright: what kind of
+   attack, the range, which ability, the die, the damage type. So this reads
+   those two shapes and nothing else.
+
+   The rule it works to is: produce an action only when every part was found in
+   the text, and otherwise produce nothing. A missing action is a feature you
+   read and apply yourself, which is where you already were. A wrong one is a
+   character sheet that lies to you, which is worse than useless - so every
+   extraction here is all-or-nothing, and anything it emits is tagged `derived`
+   so the sheet can say where it came from. */
+(function () {
+  'use strict';
+  var VT = window.VT, U = VT.util, SRD = VT.srd;
+
+  var ABILITY_WORD = {
+    strength: 'str', dexterity: 'dex', constitution: 'con',
+    intelligence: 'int', wisdom: 'wis', charisma: 'cha'
+  };
+
+  var DAMAGE_TYPES = ['acid', 'bludgeoning', 'cold', 'fire', 'force', 'lightning',
+    'necrotic', 'piercing', 'poison', 'psychic', 'radiant', 'slashing', 'thunder'];
+
+  /* Feature entries nest: strings, {entries:[...]}, lists, tables. Flatten to
+     one string, keeping the inline tags intact - the damage tags are the most
+     reliable thing in the whole record and must survive. */
+  function flatten(node, out) {
+    out = out || [];
+    if (node == null) return out;
+    if (typeof node === 'string') { out.push(node); return out; }
+    if (Array.isArray(node)) { node.forEach(function (n) { flatten(n, out); }); return out; }
+    if (typeof node === 'object') {
+      if (node.name) out.push(node.name);
+      flatten(node.entries || node.items || node.rows || [], out);
+    }
+    return out;
+  }
+
+  function textOf(feature) {
+    return flatten(feature && feature.entries).join(' ').replace(/\s+/g, ' ');
+  }
+
+  /* "{@damage 2d6}" / "{@dice d4}" / a bare "3d8".
+
+     The first usable die wins - the first damage a feature mentions is the
+     damage it deals, and later ones are nearly always an upgrade table or a
+     secondary rider. "Usable" is doing real work there: a d20 is skipped and
+     the scan continues, because a feature that rolls 1d20 on a table and then
+     deals 2d6 must not come out as a 1d20 attack. */
+  function firstDie(text) {
+    var tag = text.match(/\{@(?:damage|dice|scaledamage|scaledice)\s+([^}|]+)/i);
+    if (tag) {
+      var inner = tag[1].trim();
+      var m = inner.match(/\d*d\d+(?:\s*[+-]\s*\d+)?/i);
+      if (m) { var tagged = normaliseDie(m[0]); if (tagged) return tagged; }
+    }
+    var all = text.match(/\b\d*d\d+\b/gi) || [];
+    for (var i = 0; i < all.length; i++) {
+      var d = normaliseDie(all[i]);
+      if (d) return d;
+    }
+    return null;
+  }
+
+  function normaliseDie(d) {
+    d = String(d).replace(/\s+/g, '');
+    d = /^d/i.test(d) ? '1' + d : d;         /* "d4" is one d4 */
+    /* A d20 or d100 is a table roll, never damage. "Tales from Beyond" rolls
+       1d20 to pick which effect you get, and reading that as damage produces a
+       weapon that hits for 1d20 fire - confidently, and completely wrong. */
+    var faces = parseInt((d.match(/d(\d+)/i) || [])[1], 10);
+    if (faces === 20 || faces === 100) return null;
+    return d;
+  }
+
+  /* Which damage type this feature deals, or null when the text does not make
+     that unambiguous.
+
+     The trap is that damage words appear in text for reasons other than the
+     damage being dealt - "resistance to bludgeoning, piercing, and slashing"
+     is the common one, and picking the first word out of that list invents an
+     attack that deals slashing damage. So the evidence is ranked, and a list
+     of several types is treated as no answer at all rather than a menu to
+     choose from. */
+  function damageType(text) {
+    /* strongest: the feature says outright what its damage is */
+    var m = text.match(/damage(?:\s+type)?\s+is\s+([a-z]+)/i);
+    if (m && DAMAGE_TYPES.indexOf(m[1].toLowerCase()) >= 0) return m[1].toLowerCase();
+
+    /* strong: the type sits directly against a die - "takes 3d6 fire damage" */
+    m = text.match(/\b\d*d\d+\s+([a-z]+)\s+damage\b/i);
+    if (m && DAMAGE_TYPES.indexOf(m[1].toLowerCase()) >= 0) return m[1].toLowerCase();
+
+    /* weakest: "<type> damage" somewhere in the prose.
+
+       Two separate traps, needing two separate rules.
+
+       The word must be the noun, not the verb: "you can force it to make a
+       Wisdom saving throw" is not force damage. So the match requires "damage"
+       right after it.
+
+       But adjacency alone is not enough either, because a list ends with one:
+       "Bludgeoning, Piercing, or Slashing damage" satisfies it exactly once,
+       for Slashing, and turns a damage-reduction reaction into a slashing
+       attack. So the abstain check counts the type words themselves, wherever
+       they appear - more than one distinct type anywhere means the text is
+       listing or offering a choice, and there is no way to tell from here
+       which one this feature actually deals. */
+    var named = DAMAGE_TYPES.filter(function (t) {
+      return new RegExp('\\b' + t + '\\b', 'i').test(text);
+    });
+    if (named.length !== 1) return null;
+
+    var t0 = named[0];
+    return new RegExp('\\b' + t0 + '\\s+damage\\b', 'i').test(text) ? t0 : null;
+  }
+
+  /* "you add your Dexterity modifier to its attack and damage rolls" */
+  function statedAbility(text) {
+    var m = text.match(/add your ([A-Za-z]+) modifier/i);
+    if (m && ABILITY_WORD[m[1].toLowerCase()]) return ABILITY_WORD[m[1].toLowerCase()];
+    return null;
+  }
+
+  function statedRange(text) {
+    var m = text.match(/range of (\d+)\s*(?:feet|ft)/i);
+    if (m) return parseInt(m[1], 10);
+    return null;
+  }
+
+  function statedReach(text) {
+    var m = text.match(/reach of (\d+)\s*(?:feet|ft)/i);
+    return m ? parseInt(m[1], 10) : null;
+  }
+
+  /* Some features say their die follows a class table rather than printing it.
+     Only the Martial Arts column is common enough to be worth resolving, and
+     features.js already owns that progression. */
+  function tableDie(text, ctx) {
+    if (/Martial Arts (?:column|die|table)/i.test(text) && VT.features && VT.features.martialArtsDie) {
+      return VT.features.martialArtsDie(ctx.level || 1);
+    }
+    return null;
+  }
+
+  /* ---- the two shapes ---------------------------------------------------- */
+
+  function asAttack(feature, ctx, text) {
+    var atk = text.match(/\b(ranged|melee)\s+(spell\s+)?attack\b/i);
+    if (!atk) return null;
+
+    var die = tableDie(text, ctx) || firstDie(text);
+    if (!die) return null;
+
+    var type = damageType(text);
+    if (!type) return null;
+
+    var ability = statedAbility(text) || ctx.castAbility || 'dex';
+    var abilityMod = SRD.mod((ctx.abilities || {})[ability] || 10);
+    var ranged = /ranged/i.test(atk[1]);
+    var reach = statedReach(text);
+    var range = statedRange(text);
+    if (ranged && !range) return null;              /* a ranged attack needs a range */
+
+    var act = {
+      name: feature.name,
+      kind: ranged ? 'ranged' : 'melee',
+      toHit: (ctx.prof || 2) + abilityMod,
+      dmg: die + (abilityMod ? U.sign(abilityMod) : ''),
+      dmgType: type,
+      cost: 'action',
+      fromFeature: true,
+      derived: true,
+      desc: 'Read from the feature text: ' + (ranged ? range + ' ft range' : (reach || 5) + ' ft reach') +
+            ', ' + ability.toUpperCase() + ' to hit and damage.'
+    };
+    if (ranged) act.range = [range, range];
+    else act.reach = reach || 5;
+    return act;
+  }
+
+  function asSave(feature, ctx, text) {
+    var sv = text.match(/\b(Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma)\s+saving throw\b/i);
+    if (!sv) return null;
+
+    var die = tableDie(text, ctx) || firstDie(text);
+    if (!die) return null;
+
+    var type = damageType(text);
+    if (!type) return null;
+
+    /* Where the DC comes from, in the order the text itself settles it.
+
+       Most features say "against your spell save DC" outright. A few name a
+       class DC instead - the monk's Ki save DC - and some, like Searing
+       Sunburst, name none at all because the class table already did. So a
+       class DC is accepted as the fallback where the rules define one, and
+       anything left over is refused: a wrong DC is worse than no action. */
+    var dc = /spell save DC/i.test(text) ? (ctx.saveDC || ctx.classDC)
+           : (ctx.classDC || ctx.saveDC);
+    if (!dc) return null;
+
+    return {
+      name: feature.name,
+      kind: 'save',
+      save: ABILITY_WORD[sv[1].toLowerCase()],
+      dc: dc,
+      dmg: die,
+      dmgType: type,
+      half: /half as much damage|half damage/i.test(text),
+      range: [0, statedRange(text) || 30],
+      cost: 'action',
+      fromFeature: true,
+      derived: true,
+      desc: 'Read from the feature text: ' + sv[1] + ' save against DC ' + dc +
+            (/half as much damage|half damage/i.test(text) ? ', half on a success.' : '.')
+    };
+  }
+
+  /* One feature in, zero or one action out. */
+  /* A die that feeds temporary hit points, healing, or a table roll is not
+     damage. When the only die in the text is spoken for like that, there is
+     nothing to build an attack out of. */
+  function dieIsNotDamage(text, die) {
+    if (!die) return true;
+    var faces = die.replace(/^\d+/, '');
+    var pattern = '\\b\\d*' + faces + '\\b[^.]{0,40}?(temporary hit points|hit points back|regains?)';
+    if (new RegExp(pattern, 'i').test(text)) return true;
+    return false;
+  }
+
+  /* Some records are containers: "Psionic Disciplines" is every discipline in
+     the book under one name, "Eldritch Invocations" likewise. Reading a single
+     attack out of a list of thirty abilities picks an arbitrary one and labels
+     it with the container's name, which is worse than saying nothing. Length is
+     a crude signal but a reliable one - a single feature that grants an attack
+     is a paragraph, not a chapter. */
+  var CONTAINER_CHARS = 1500;
+
+  function toAction(feature, ctx) {
+    if (!feature || !feature.name) return null;
+    var text = textOf(feature);
+    if (!text) return null;
+    if (text.length > CONTAINER_CHARS) return null;
+    ctx = ctx || {};
+    var act = asAttack(feature, ctx, text) || asSave(feature, ctx, text);
+    if (!act) return null;
+    if (dieIsNotDamage(text, (act.dmg || '').match(/\d*d\d+/) && (act.dmg.match(/\d*d\d+/) || [])[0])) {
+      return null;
+    }
+    return act;
+  }
+
+  VT.featureText = {
+    toAction: toAction,
+    textOf: textOf,
+    /* exposed for the tests that keep this honest */
+    firstDie: firstDie, damageType: damageType, statedAbility: statedAbility
   };
 })();
 
@@ -6228,10 +6556,16 @@
   }
 
   /* Resolve a stored feature back to its printed text, when the data is loaded. */
-  function featureText(feature, className) {
+  /* The feature list carried on an actor is deliberately thin - a name and a
+     level - so a saved character does not haul the whole printed text of forty
+     features around with it. Anything that needs the prose looks it back up. */
+  function featureRecord(feature, className) {
     var FT = VT.fivetools;
-    if (!FT || !FT.get) return '';
-    var pools = feature.subclass ? ['subclassfeature'] : ['classfeature'];
+    if (!FT || !FT.get || !feature) return null;
+    /* A subclass feature can be listed without the flag being set, so check
+       both pools rather than trusting it. */
+    var pools = feature.subclass ? ['subclassfeature', 'classfeature']
+                                 : ['classfeature', 'subclassfeature'];
     var hit = null;
     pools.forEach(function (kind) {
       if (hit) return;
@@ -6241,6 +6575,22 @@
           (!className || String(f.className || '').toLowerCase() === String(className).toLowerCase());
       }) || null;
     });
+    /* Last resort: name and level alone. A subclass feature's className is the
+       parent class, but homebrew is not always so tidy. */
+    if (!hit) {
+      pools.forEach(function (kind) {
+        if (hit) return;
+        hit = (FT.get(kind) || []).find(function (f) {
+          return String(f.name).toLowerCase() === String(feature.name).toLowerCase() &&
+            (f.level || 1) === feature.level;
+        }) || null;
+      });
+    }
+    return hit;
+  }
+
+  function featureText(feature, className) {
+    var hit = featureRecord(feature, className);
     return hit ? VT.tags.toText(hit.entries) : '';
   }
 
@@ -6660,7 +7010,7 @@
     relevelClass: relevelClass, addClassLevel: addClassLevel,
     classesOf: classesOf, totalLevelOf: totalLevelOf,
     subclassFor: subclassFor,
-    featuresFor: featuresFor, featureText: featureText, asiStatus: asiStatus, isASI: isASI
+    featuresFor: featuresFor, featureText: featureText, featureRecord: featureRecord, asiStatus: asiStatus, isASI: isASI
   };
 })();
 

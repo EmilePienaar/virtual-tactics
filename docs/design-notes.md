@@ -773,6 +773,46 @@ one import/export path, so a file written by either is normalised the same way.
 
 ---
 
+## Reading actions out of feature text
+
+`features.js` is a curated table and says, correctly, that you cannot read an
+arbitrary game effect out of English. But two shapes are not arbitrary. Attacks
+and saving-throw effects are written to a house style that barely moves across
+twenty years of books:
+
+    a ranged spell attack with a range of 30 feet ... you add your Dexterity
+    modifier to its attack and damage rolls ... its damage is radiant, and its
+    damage die is a d4
+
+Everything a clickable action needs is stated outright. `data/featuretext.js`
+reads exactly those two shapes and refuses everything else, which turns about
+thirty more features into rollable actions — Radiant Sun Bolt, Quivering Palm,
+Radiance of the Dawn — with nothing hand-written.
+
+**The rule is all-or-nothing.** A missing action leaves you reading the feature
+yourself, which is where you already were. A wrong one is a sheet that lies. So
+every part must be found in the text or nothing is produced, and four guards
+exist because each one caught a real error during development:
+
+| guard | what it caught |
+|---|---|
+| a d20 or d100 is never damage | *Tales from Beyond* rolls 1d20 on a table; it became a 1d20 attack |
+| the type word needs the noun "damage" beside it | "you can **force** it to make a save" became force damage |
+| more than one damage type named anywhere ⇒ abstain | "Bludgeoning, Piercing, or **Slashing damage**" made a slashing attack out of a damage-reduction reaction |
+| text over 1500 characters is a container | *Psionic Disciplines* is thirty abilities under one name; one was picked arbitrarily |
+
+The cost is false negatives, deliberately. *Wrath of the Storm* deals "lightning
+or thunder damage (your choice)" and is refused, because there is no way to pick
+from here. That is the right trade: the sheet marks everything it inferred with
+**read from text**, so a player knows which numbers to glance at, and an action
+it declined to guess at is one they were always going to read anyway.
+
+Save DCs follow the same discipline. Most features name one ("against your spell
+save DC"); a few lean on a class DC the table already set, so the monk's Ki save
+DC is supplied and everything else abstains rather than inventing a number.
+
+---
+
 ## The interop id is not optional
 
 `api.interop.id` in the manifest is what makes `TS.sync.send` work at all.
