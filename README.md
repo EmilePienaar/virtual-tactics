@@ -171,6 +171,15 @@ under *Inventory → Collect from Tale Shop*.
 build. An older one declared a cross-symbiote interop id that TaleSpire does not
 always accept, and it would refuse the whole symbiote because of it.
 
+**"We can't see each other."** The GM opens a shop and nobody sees it, or a
+player builds a character and the Party tab stays empty. Everyone needs the
+current build — earlier ones sent messages that were too big for TaleSpire to
+carry, and it dropped them silently. If it happens on the current build, press
+**Check again** on the player's Shops tab, which asks the GM to resend.
+
+Both symbiotes keep a log at `.debug\log.txt` inside their own folder. If
+something is going wrong between machines, that file usually says what.
+
 ---
 
 ## For whoever maintains this

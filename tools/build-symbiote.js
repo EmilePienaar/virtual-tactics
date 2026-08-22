@@ -16,6 +16,7 @@ const ROOT = path.resolve(__dirname, '..');
 /* Load order matters: each module reads the ones above it at definition time. */
 const ENGINE = [
   'src/core/util.js',
+  'src/core/sync.js',
   'src/core/dice.js',
   'src/rules/srd.js',
   'src/render/spriteart.js',

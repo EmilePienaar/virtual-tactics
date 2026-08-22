@@ -2062,13 +2062,21 @@
     };
   }
 
+  /* Frame it. TaleSpire refuses any single payload over 500 characters, and a
+     shop or a mirrored sheet is far bigger than that, so VT.sync cuts the
+     message up and the other side puts it back together. */
   function syncSend(obj) {
     if (!TS.sync || !TS.sync.send) return;
-    try {
-      TS.sync.send(JSON.stringify(obj), 'board').catch(function (e) {
-        TS.debug.log('sync failed: ' + (e && e.cause));
-      });
-    } catch (e) { /* sync unavailable */ }
+    VT.sync.send(TS.sync, JSON.stringify(obj), 'board', function (e) {
+      TS.debug.log('sync failed: ' + describeErr(e));
+    });
+  }
+
+  /* TaleSpire hands back errors in more than one shape; print whichever of
+     them actually says something rather than logging "undefined". */
+  function describeErr(e) {
+    if (!e) return 'unknown';
+    return String(e.cause || e.message || e.error || e);
   }
 
   var shareSoon = U.debounce(function () {
@@ -2083,8 +2091,12 @@
   window.onSyncMessage = function (evt) {
     if (!evt || !evt.payload) return;
     var from = evt.payload.fromClient && evt.payload.fromClient.id;
+    /* Long messages arrive in frames; this returns null until the last one
+       lands, then the whole payload at once. */
+    var whole = VT.sync.receive(evt.payload.str, from);
+    if (whole == null) return;
     var msg;
-    try { msg = JSON.parse(evt.payload.str); } catch (e) { return; }
+    try { msg = JSON.parse(whole); } catch (e) { return; }
     if (!msg || msg.p !== PROTO) return;
 
     TS.clients.isMe(from).then(function (isMe) {

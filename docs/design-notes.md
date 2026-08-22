@@ -773,6 +773,48 @@ one import/export path, so a file written by either is normalised the same way.
 
 ---
 
+## Messages have to fit in 500 characters
+
+`TS.sync.send` refuses any payload longer than 500 characters:
+
+    sync failed: Error: string too long: max length is 500, length was 3853
+
+It rejects the whole message rather than truncating it, and the rejection
+arrives as a promise rejection nobody was reading closely, so the symptom is not
+an error at the table - it is simply nothing happening. A shop with its stock is
+around 3,500 characters and a mirrored character sheet about 700, so in practice
+**every message that mattered was being dropped** while every small one got
+through. Opening a shop did nothing; the Party tab stayed empty.
+
+`src/core/sync.js` puts each message out in frames instead:
+
+    VTF|<msgId>|<index>|<total>|<chunk of the payload>
+
+Plain text, deliberately. Wrapping a chunk of JSON inside another JSON object
+escapes every quote in it, which inflates the exact thing being kept small - by
+about a third for our payloads, and unpredictably enough that a frame sized
+against the limit could still cross it.
+
+Frames are budgeted in **UTF-8 bytes**, not characters. The limit is stated in
+characters, but being wrong in that direction loses the message with no way to
+tell, and counting bytes is never an underestimate. The chunker also refuses to
+split a surrogate pair, so an emoji in a shop name cannot arrive as two broken
+halves.
+
+Reassembly is keyed by sender *and* message id, so two people talking at once
+cannot interleave into each other's message, and indexed rather than sequential,
+so frames may arrive in any order. Half-assembled messages are dropped after
+thirty seconds. If a frame is genuinely lost the message never completes and the
+player sees nothing - which is what the **Check again** button on the Shops tab
+is for.
+
+The dev shim now enforces the same limit. It did not before, which is the whole
+reason this shipped: everything worked perfectly against the shim and failed
+against the real thing. A fake that is more permissive than what it stands in
+for will eventually cost you exactly one bug of this shape.
+
+---
+
 ## Reading results back from the dice tray
 
 The symbiote does not only put dice in the tray — it **reads the result back**.

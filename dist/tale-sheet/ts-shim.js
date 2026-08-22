@@ -126,7 +126,16 @@
       /* Cross-client sync. Real broadcasts come back to the sender too, so the
          echo here is faithful - it is exactly the case that needs filtering. */
       sync: {
+        /* TaleSpire refuses anything over 500 characters and drops the whole
+           message. The shim used to accept any length, which is exactly why a
+           real 3,853-character shop broadcast reached the table before anyone
+           noticed it could not fit. Fail here the way the real thing does. */
         send: function (str, target) {
+          if (typeof str === 'string' && str.length > 500) {
+            var err = new Error('string too long: max length is 500, length was ' + str.length);
+            console.warn('[TS.sync.send REJECTED]', err.message);
+            return Promise.reject(err);
+          }
           setTimeout(function () {
             if (typeof window.onSyncMessage === 'function') {
               window.onSyncMessage({
