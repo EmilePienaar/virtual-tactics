@@ -1,40 +1,69 @@
 /* The symbiote sheet, hosted inside the Forge.
 
-   sheet.css was written for a narrow panel that owns its whole window: it
-   styles #app as a full-height flex column and sizes for a phone-width strip.
-   Inside the Forge it is one panel among several, so the parts that assume the
-   window are re-scoped here rather than edited there - tale-sheet has to keep
-   working as a symbiote, and that is the copy the table depends on. */
+   sheet.css is written for a panel that owns its window. Rather than editing
+   it - tale-sheet is what the table runs - sheetview.js rewrites its rules at
+   load to sit under #sheetHost. What is left here is the embedding itself:
+   how the sheet is laid out as one panel among several, and the Forge-side
+   furniture that goes with it. */
 
 #sheetHost { display: flex; flex-direction: column; min-height: 0; }
 #sheetHost.hidden { display: none; }
 
-/* the sheet's own chrome, sized for a desk rather than a side panel */
+/* the sheet's own chrome, sized for a desk rather than a phone strip */
 #sheetHost #bar {
   display: flex; gap: 8px; align-items: center;
   padding: 8px 10px; border-bottom: 1px solid var(--line);
 }
 #sheetHost #charPick { flex: 1; max-width: 340px; }
 #sheetHost #tabs { display: flex; gap: 2px; padding: 0 8px; }
+
+/* One column, scrolling one way. A multi-column flow reads down the first
+   column and back up to the top of the second, which is a lot of travel for
+   one character; the sections below are what keep it short instead. */
 #sheetHost #view {
-  padding: 10px; overflow-y: auto;
-  /* two columns on a wide screen: the sheet is a long strip by design, and on
-     a monitor that is a lot of scrolling for no reason */
-  column-gap: 14px;
-}
-@media (min-width: 1100px) {
-  #sheetHost #view { columns: 2; }
-  #sheetHost #view > .card { break-inside: avoid; margin-bottom: 12px; }
+  padding: 10px 12px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-width: 760px;
 }
 #sheetHost #toast { position: fixed; bottom: 14px; right: 14px; z-index: 60; }
 
-/* ---- the roll log in the side rail ---- */
-.rolllog { display: flex; flex-direction: column; gap: 3px; max-height: 420px; overflow-y: auto; }
+/* ---- sections ---- */
+#sheetGroups {
+  display: flex; gap: 2px; padding: 6px 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+#sheetGroups.hidden { display: none; }
+.sub-tab {
+  padding: 4px 12px; font-size: 11px; border-radius: 5px 5px 0 0;
+  color: var(--ink-dim); background: none; border: none; cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.sub-tab:hover { color: var(--ink); }
+.sub-tab.on { color: var(--gold); border-bottom-color: var(--gold); }
+
+/* Show one section at a time. "all" is the Edit and Build tabs, which are
+   sheet.js's own and are not carved up. */
+#sheetHost #view[data-grp="play"]  > *:not([data-group="play"]),
+#sheetHost #view[data-grp="magic"] > *:not([data-group="magic"]),
+#sheetHost #view[data-grp="gear"]  > *:not([data-group="gear"]),
+#sheetHost #view[data-grp="about"] > *:not([data-group="about"]) { display: none; }
+
+/* ---- the roll log, in the Forge side rail ---- */
+.rolllog { display: flex; flex-direction: column; gap: 2px; max-height: 200px; overflow-y: auto; }
 .rolline {
   display: flex; align-items: baseline; gap: 6px;
-  padding: 3px 5px; border-radius: 4px; background: #17151f;
+  padding: 2px 5px; border-radius: 3px; background: #17151f;
 }
 .rolline.fresh { background: #1e2a1c; }
-.rolline .rn { flex: 1; font-size: 11px; }
+.rolline .rn { flex: 1; font-size: 10px; }
 .rolline .rd { font-family: var(--mono); font-size: 9px; color: var(--ink-faint); }
-.rolline .rt { font-family: var(--mono); font-size: 14px; color: var(--gold); min-width: 26px; text-align: right; }
+.rolline .rt { font-family: var(--mono); font-size: 12px; color: var(--gold); min-width: 22px; text-align: right; }
+
+/* a quiet inline action in a section header */
+.sec-h .lnk {
+  margin-left: auto; font-size: 10px; color: var(--ink-faint);
+  background: none; border: none; cursor: pointer; padding: 0;
+}
+.sec-h .lnk:hover { color: var(--gold); }
+.sec-h { display: flex; align-items: baseline; gap: 6px; }

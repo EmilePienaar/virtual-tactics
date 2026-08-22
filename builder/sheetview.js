@@ -107,7 +107,7 @@
     U.clear(logHost);
     if (!log.length) {
       logHost.appendChild(el('p', { class: 'tiny' }, [
-        'Rolls you make on the sheet appear here.'
+        'Rolls appear here. In TaleSpire the same buttons throw real dice instead.'
       ]));
       return;
     }
@@ -231,6 +231,110 @@
     setTimeout(watchRolls, 0);
   };
 
+  /* ---- grouping the sheet into sections ---------------------------------- */
+
+  /* The sheet is one long strip, which is right in a phone-width panel and
+     tiring on a monitor. The first attempt at fixing that set `columns: 2`,
+     which was worse: multi-column flow runs down the first column and back up
+     to the top of the second, so reading it means scrolling down, up, and down
+     again for one character.
+
+     Sections instead. The cards keep their order and their single column - only
+     some of them are on screen at a time, which is the part that was actually
+     tiring. Nothing here restructures the sheet's DOM: each card is tagged with
+     an attribute and CSS hides the rest, so sheet.js can re-render whenever it
+     likes and this just runs again. */
+  var GROUPS = [
+    { key: 'play',  label: 'Play',
+      match: /^(abilities|skills|tools|actions|custom roll|conditions|wild shape)$|^$/i },
+    { key: 'magic', label: 'Magic',
+      match: /^(spell slots|spells|resources|pact magic|prepared)/i },
+    { key: 'gear',  label: 'Gear',
+      match: /^(coin|inventory|attunement|collect from)/i },
+    { key: 'about', label: 'Character',
+      match: /^(features|choices|details|rest|notes|ability score|proficiencies)/i }
+  ];
+
+  var activeGroup = 'play';
+  var groupBar = null;
+  var applying = false;
+
+  /* Cards title themselves with an h3; the collapsible ones - Skills,
+     Features, Choices - use a summary instead. Read whichever is there, and
+     drop any trailing count so "Features - 13" still matches "features". */
+  function headingOf(card) {
+    var h = card.querySelector('h3') || card.querySelector('summary');
+    if (!h) return '';
+    return h.textContent.trim().split(/\s+[-—·]\s+/)[0].trim();
+  }
+
+  function groupFor(card, index) {
+    /* The first card is the character themself - name, AC, HP, the hit point
+       bar - and has no heading. It belongs with Play whatever else happens. */
+    if (index === 0) return 'play';
+    var h = headingOf(card);
+    for (var i = 0; i < GROUPS.length; i++) {
+      if (GROUPS[i].match.test(h)) return GROUPS[i].key;
+    }
+    return 'about';                 /* anything unrecognised is reference material */
+  }
+
+  function onSheetTab() {
+    var on = document.querySelector('#sheetHost .tab.on');
+    return !on || on.dataset.tab === 'sheet';
+  }
+
+  function applyGroups() {
+    var view = document.getElementById('view');
+    if (!view || applying) return;
+    applying = true;
+
+    var cards = Array.prototype.slice.call(view.children);
+    var counts = {};
+    cards.forEach(function (c, i) {
+      var g = groupFor(c, i);
+      c.setAttribute('data-group', g);
+      counts[g] = (counts[g] || 0) + 1;
+    });
+
+    /* Edit and Build are sheet.js's own tabs and are not carved up. */
+    var show = onSheetTab() && cards.length > 3;
+    view.setAttribute('data-grp', show ? activeGroup : 'all');
+    if (groupBar) {
+      groupBar.classList.toggle('hidden', !show);
+      U.clear(groupBar);
+      if (show) {
+        GROUPS.forEach(function (g) {
+          if (!counts[g.key]) return;
+          groupBar.appendChild(el('button', {
+            class: 'sub-tab' + (g.key === activeGroup ? ' on' : ''),
+            onClick: function () {
+              activeGroup = g.key;
+              applyGroups();
+            }
+          }, [g.label]));
+        });
+        /* If the section we were on has nothing in it for this character, fall
+           back rather than showing an empty page. */
+        if (!counts[activeGroup]) {
+          var first = GROUPS.filter(function (g) { return counts[g.key]; })[0];
+          if (first) { activeGroup = first.key; view.setAttribute('data-grp', activeGroup); }
+        }
+      }
+    }
+    applying = false;
+  }
+
+  /* sheet.js rebuilds #view on every change, so re-tag whenever it does. */
+  function watchSheet() {
+    var view = document.getElementById('view');
+    if (!view || view.__grouped) return;
+    view.__grouped = true;
+    new MutationObserver(function () {
+      if (!applying) applyGroups();
+    }).observe(view, { childList: true });
+  }
+
   /* ---- the Forge's Sheet tab --------------------------------------------- */
 
   function render(work, side) {
@@ -245,11 +349,28 @@
     host.classList.remove('hidden');
     work.appendChild(host);
 
+    /* the section bar, inserted once, just under the sheet's own tabs */
+    if (!groupBar) {
+      groupBar = el('nav', { id: 'sheetGroups' });
+      var tabs = host.querySelector('#tabs');
+      if (tabs && tabs.parentNode) tabs.parentNode.insertBefore(groupBar, tabs.nextSibling);
+    }
+    watchSheet();
+
+    /* The sheet's own tabs change what is in #view without replacing it, so
+       re-evaluate the sections when one is clicked. */
+    Array.prototype.slice.call(host.querySelectorAll('#tabs .tab')).forEach(function (t) {
+      if (t.__grouped) return;
+      t.__grouped = true;
+      t.addEventListener('click', function () { setTimeout(applyGroups, 0); });
+    });
+
     /* Re-read the roster every time the tab opens. The sheet loads its state
        once at boot, which is right in a symbiote that owns its storage and
        wrong here - a character built on the Character tab a moment ago has to
        show up without a page reload. */
     if (VT.sheetApp) VT.sheetApp.reload();
+    setTimeout(applyGroups, 60);
 
     var list = roster();
     if (!list.length) {
@@ -265,20 +386,18 @@
       return;
     }
 
+    /* The roll log earns its space only when there is something in it, so it
+       stays small and the Clear button lives in the header rather than taking
+       a row of its own. */
+    var head = el('div', { class: 'sec-h' }, ['Dice']);
+    head.appendChild(el('button', {
+      class: 'lnk', title: 'Clear the log',
+      onClick: function () { log.length = 0; drawLog(); }
+    }, ['clear']));
+
     side.appendChild(el('div', { class: 'sec' }, [
-      el('div', { class: 'sec-h' }, ['Dice']),
-      el('div', { class: 'sec-b' }, [
-        (logHost = el('div', { class: 'rolllog' })),
-        el('div', { class: 'btnrow', style: { marginTop: '8px' } }, [
-          el('button', { class: 'btn sm danger', onClick: function () {
-            log.length = 0; drawLog();
-          } }, ['Clear'])
-        ]),
-        el('p', { class: 'tiny' }, [
-          'Rolled here in the browser. In TaleSpire the same buttons throw real ' +
-          'dice in the tray instead.'
-        ])
-      ])
+      head,
+      el('div', { class: 'sec-b' }, [(logHost = el('div', { class: 'rolllog' }))])
     ]));
     drawLog();
   }

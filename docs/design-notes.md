@@ -801,6 +801,27 @@ handler rather than replacing it - the sheet uses those same results for death
 saves and hit dice, and quietly stealing them would break it in ways that only
 appear mid-fight.
 
+### Sections, not columns
+
+The sheet is one long strip, which is right in a phone-width panel and tiring on
+a monitor. The first attempt at that set `columns: 2`, which was worse: a
+multi-column flow runs down the first column and back up to the top of the
+second, so reading one character means scrolling down, up, and down again.
+
+Sections instead. The cards keep their order and their single column - Play,
+Magic, Gear, Character - and only one section is on screen at a time, which is
+the part that was actually tiring. Nothing restructures the sheet's DOM: each
+card is tagged with an attribute and CSS hides the rest, so sheet.js can
+re-render whenever it likes and a MutationObserver simply tags them again.
+
+Cards title themselves with an `h3`, except the collapsible ones - Skills,
+Features, Choices - which use a `summary`. Reading only the `h3` put all three
+in the wrong section, silently, because a card with no heading falls to the
+default bucket rather than erroring.
+
+The sheet's own Edit and Build tabs are left whole; sections apply only to the
+Sheet tab, where the card count is the problem.
+
 ### The stylesheet was the hard part
 
 `sheet.css` was written for a page it owns: `:root` variables, `html`/`body`

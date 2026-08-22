@@ -804,44 +804,73 @@ details > div { padding: 0 8px 8px; }
 
 /* The symbiote sheet, hosted inside the Forge.
 
-   sheet.css was written for a narrow panel that owns its whole window: it
-   styles #app as a full-height flex column and sizes for a phone-width strip.
-   Inside the Forge it is one panel among several, so the parts that assume the
-   window are re-scoped here rather than edited there - tale-sheet has to keep
-   working as a symbiote, and that is the copy the table depends on. */
+   sheet.css is written for a panel that owns its window. Rather than editing
+   it - tale-sheet is what the table runs - sheetview.js rewrites its rules at
+   load to sit under #sheetHost. What is left here is the embedding itself:
+   how the sheet is laid out as one panel among several, and the Forge-side
+   furniture that goes with it. */
 
 #sheetHost { display: flex; flex-direction: column; min-height: 0; }
 #sheetHost.hidden { display: none; }
 
-/* the sheet's own chrome, sized for a desk rather than a side panel */
+/* the sheet's own chrome, sized for a desk rather than a phone strip */
 #sheetHost #bar {
   display: flex; gap: 8px; align-items: center;
   padding: 8px 10px; border-bottom: 1px solid var(--line);
 }
 #sheetHost #charPick { flex: 1; max-width: 340px; }
 #sheetHost #tabs { display: flex; gap: 2px; padding: 0 8px; }
+
+/* One column, scrolling one way. A multi-column flow reads down the first
+   column and back up to the top of the second, which is a lot of travel for
+   one character; the sections below are what keep it short instead. */
 #sheetHost #view {
-  padding: 10px; overflow-y: auto;
-  /* two columns on a wide screen: the sheet is a long strip by design, and on
-     a monitor that is a lot of scrolling for no reason */
-  column-gap: 14px;
-}
-@media (min-width: 1100px) {
-  #sheetHost #view { columns: 2; }
-  #sheetHost #view > .card { break-inside: avoid; margin-bottom: 12px; }
+  padding: 10px 12px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  max-width: 760px;
 }
 #sheetHost #toast { position: fixed; bottom: 14px; right: 14px; z-index: 60; }
 
-/* ---- the roll log in the side rail ---- */
-.rolllog { display: flex; flex-direction: column; gap: 3px; max-height: 420px; overflow-y: auto; }
+/* ---- sections ---- */
+#sheetGroups {
+  display: flex; gap: 2px; padding: 6px 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+#sheetGroups.hidden { display: none; }
+.sub-tab {
+  padding: 4px 12px; font-size: 11px; border-radius: 5px 5px 0 0;
+  color: var(--ink-dim); background: none; border: none; cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.sub-tab:hover { color: var(--ink); }
+.sub-tab.on { color: var(--gold); border-bottom-color: var(--gold); }
+
+/* Show one section at a time. "all" is the Edit and Build tabs, which are
+   sheet.js's own and are not carved up. */
+#sheetHost #view[data-grp="play"]  > *:not([data-group="play"]),
+#sheetHost #view[data-grp="magic"] > *:not([data-group="magic"]),
+#sheetHost #view[data-grp="gear"]  > *:not([data-group="gear"]),
+#sheetHost #view[data-grp="about"] > *:not([data-group="about"]) { display: none; }
+
+/* ---- the roll log, in the Forge side rail ---- */
+.rolllog { display: flex; flex-direction: column; gap: 2px; max-height: 200px; overflow-y: auto; }
 .rolline {
   display: flex; align-items: baseline; gap: 6px;
-  padding: 3px 5px; border-radius: 4px; background: #17151f;
+  padding: 2px 5px; border-radius: 3px; background: #17151f;
 }
 .rolline.fresh { background: #1e2a1c; }
-.rolline .rn { flex: 1; font-size: 11px; }
+.rolline .rn { flex: 1; font-size: 10px; }
 .rolline .rd { font-family: var(--mono); font-size: 9px; color: var(--ink-faint); }
-.rolline .rt { font-family: var(--mono); font-size: 14px; color: var(--gold); min-width: 26px; text-align: right; }
+.rolline .rt { font-family: var(--mono); font-size: 12px; color: var(--gold); min-width: 22px; text-align: right; }
+
+/* a quiet inline action in a section header */
+.sec-h .lnk {
+  margin-left: auto; font-size: 10px; color: var(--ink-faint);
+  background: none; border: none; cursor: pointer; padding: 0;
+}
+.sec-h .lnk:hover { color: var(--gold); }
+.sec-h { display: flex; align-items: baseline; gap: 6px; }
 
 </style>
 </head>
@@ -10833,7 +10862,7 @@ details > div { padding: 0 8px 8px; }
     U.clear(logHost);
     if (!log.length) {
       logHost.appendChild(el('p', { class: 'tiny' }, [
-        'Rolls you make on the sheet appear here.'
+        'Rolls appear here. In TaleSpire the same buttons throw real dice instead.'
       ]));
       return;
     }
@@ -10957,6 +10986,110 @@ details > div { padding: 0 8px 8px; }
     setTimeout(watchRolls, 0);
   };
 
+  /* ---- grouping the sheet into sections ---------------------------------- */
+
+  /* The sheet is one long strip, which is right in a phone-width panel and
+     tiring on a monitor. The first attempt at fixing that set `columns: 2`,
+     which was worse: multi-column flow runs down the first column and back up
+     to the top of the second, so reading it means scrolling down, up, and down
+     again for one character.
+
+     Sections instead. The cards keep their order and their single column - only
+     some of them are on screen at a time, which is the part that was actually
+     tiring. Nothing here restructures the sheet's DOM: each card is tagged with
+     an attribute and CSS hides the rest, so sheet.js can re-render whenever it
+     likes and this just runs again. */
+  var GROUPS = [
+    { key: 'play',  label: 'Play',
+      match: /^(abilities|skills|tools|actions|custom roll|conditions|wild shape)$|^$/i },
+    { key: 'magic', label: 'Magic',
+      match: /^(spell slots|spells|resources|pact magic|prepared)/i },
+    { key: 'gear',  label: 'Gear',
+      match: /^(coin|inventory|attunement|collect from)/i },
+    { key: 'about', label: 'Character',
+      match: /^(features|choices|details|rest|notes|ability score|proficiencies)/i }
+  ];
+
+  var activeGroup = 'play';
+  var groupBar = null;
+  var applying = false;
+
+  /* Cards title themselves with an h3; the collapsible ones - Skills,
+     Features, Choices - use a summary instead. Read whichever is there, and
+     drop any trailing count so "Features - 13" still matches "features". */
+  function headingOf(card) {
+    var h = card.querySelector('h3') || card.querySelector('summary');
+    if (!h) return '';
+    return h.textContent.trim().split(/\s+[-—·]\s+/)[0].trim();
+  }
+
+  function groupFor(card, index) {
+    /* The first card is the character themself - name, AC, HP, the hit point
+       bar - and has no heading. It belongs with Play whatever else happens. */
+    if (index === 0) return 'play';
+    var h = headingOf(card);
+    for (var i = 0; i < GROUPS.length; i++) {
+      if (GROUPS[i].match.test(h)) return GROUPS[i].key;
+    }
+    return 'about';                 /* anything unrecognised is reference material */
+  }
+
+  function onSheetTab() {
+    var on = document.querySelector('#sheetHost .tab.on');
+    return !on || on.dataset.tab === 'sheet';
+  }
+
+  function applyGroups() {
+    var view = document.getElementById('view');
+    if (!view || applying) return;
+    applying = true;
+
+    var cards = Array.prototype.slice.call(view.children);
+    var counts = {};
+    cards.forEach(function (c, i) {
+      var g = groupFor(c, i);
+      c.setAttribute('data-group', g);
+      counts[g] = (counts[g] || 0) + 1;
+    });
+
+    /* Edit and Build are sheet.js's own tabs and are not carved up. */
+    var show = onSheetTab() && cards.length > 3;
+    view.setAttribute('data-grp', show ? activeGroup : 'all');
+    if (groupBar) {
+      groupBar.classList.toggle('hidden', !show);
+      U.clear(groupBar);
+      if (show) {
+        GROUPS.forEach(function (g) {
+          if (!counts[g.key]) return;
+          groupBar.appendChild(el('button', {
+            class: 'sub-tab' + (g.key === activeGroup ? ' on' : ''),
+            onClick: function () {
+              activeGroup = g.key;
+              applyGroups();
+            }
+          }, [g.label]));
+        });
+        /* If the section we were on has nothing in it for this character, fall
+           back rather than showing an empty page. */
+        if (!counts[activeGroup]) {
+          var first = GROUPS.filter(function (g) { return counts[g.key]; })[0];
+          if (first) { activeGroup = first.key; view.setAttribute('data-grp', activeGroup); }
+        }
+      }
+    }
+    applying = false;
+  }
+
+  /* sheet.js rebuilds #view on every change, so re-tag whenever it does. */
+  function watchSheet() {
+    var view = document.getElementById('view');
+    if (!view || view.__grouped) return;
+    view.__grouped = true;
+    new MutationObserver(function () {
+      if (!applying) applyGroups();
+    }).observe(view, { childList: true });
+  }
+
   /* ---- the Forge's Sheet tab --------------------------------------------- */
 
   function render(work, side) {
@@ -10971,11 +11104,28 @@ details > div { padding: 0 8px 8px; }
     host.classList.remove('hidden');
     work.appendChild(host);
 
+    /* the section bar, inserted once, just under the sheet's own tabs */
+    if (!groupBar) {
+      groupBar = el('nav', { id: 'sheetGroups' });
+      var tabs = host.querySelector('#tabs');
+      if (tabs && tabs.parentNode) tabs.parentNode.insertBefore(groupBar, tabs.nextSibling);
+    }
+    watchSheet();
+
+    /* The sheet's own tabs change what is in #view without replacing it, so
+       re-evaluate the sections when one is clicked. */
+    Array.prototype.slice.call(host.querySelectorAll('#tabs .tab')).forEach(function (t) {
+      if (t.__grouped) return;
+      t.__grouped = true;
+      t.addEventListener('click', function () { setTimeout(applyGroups, 0); });
+    });
+
     /* Re-read the roster every time the tab opens. The sheet loads its state
        once at boot, which is right in a symbiote that owns its storage and
        wrong here - a character built on the Character tab a moment ago has to
        show up without a page reload. */
     if (VT.sheetApp) VT.sheetApp.reload();
+    setTimeout(applyGroups, 60);
 
     var list = roster();
     if (!list.length) {
@@ -10991,20 +11141,18 @@ details > div { padding: 0 8px 8px; }
       return;
     }
 
+    /* The roll log earns its space only when there is something in it, so it
+       stays small and the Clear button lives in the header rather than taking
+       a row of its own. */
+    var head = el('div', { class: 'sec-h' }, ['Dice']);
+    head.appendChild(el('button', {
+      class: 'lnk', title: 'Clear the log',
+      onClick: function () { log.length = 0; drawLog(); }
+    }, ['clear']));
+
     side.appendChild(el('div', { class: 'sec' }, [
-      el('div', { class: 'sec-h' }, ['Dice']),
-      el('div', { class: 'sec-b' }, [
-        (logHost = el('div', { class: 'rolllog' })),
-        el('div', { class: 'btnrow', style: { marginTop: '8px' } }, [
-          el('button', { class: 'btn sm danger', onClick: function () {
-            log.length = 0; drawLog();
-          } }, ['Clear'])
-        ]),
-        el('p', { class: 'tiny' }, [
-          'Rolled here in the browser. In TaleSpire the same buttons throw real ' +
-          'dice in the tray instead.'
-        ])
-      ])
+      head,
+      el('div', { class: 'sec-b' }, [(logHost = el('div', { class: 'rolllog' }))])
     ]));
     drawLog();
   }
