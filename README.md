@@ -168,13 +168,13 @@ copy the code from Tale Shop's **Purchases** tab and paste it into Tale Sheet
 under *Inventory → Collect from Tale Shop*.
 
 **"TaleSpire refuses to load the symbiote."** Make sure you are on the current
-build. An older one declared a cross-symbiote interop id that TaleSpire does not
-always accept, and it would refuse the whole symbiote because of it.
+build. An older one gave both symbiotes the same interop id; they now have one
+each.
 
 **"We can't see each other."** The GM opens a shop and nobody sees it, or a
 player builds a character and the Party tab stays empty. Everyone needs the
-current build — earlier ones sent messages that were too big for TaleSpire to
-carry, and it dropped them silently. If it happens on the current build, press
+current build — earlier ones either sent messages too big for TaleSpire to carry
+or had no interop id at all, and in both cases it dropped them silently. If it happens on the current build, press
 **Check again** on the player's Shops tab, which asks the GM to resend.
 
 Both symbiotes keep a log at `.debug\log.txt` inside their own folder. If

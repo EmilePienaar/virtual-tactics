@@ -30,6 +30,9 @@
       "clients": {
         "onClientEvent": "onClientEvent"
       }
+    },
+    "interop": {
+      "id": "7c1bdc14-608e-41e3-a830-a5521b37e35d"
     }
   },
   "environment": {

@@ -14,6 +14,23 @@
 
   function uid(p) { return p + '_' + Math.random().toString(36).slice(2, 10); }
 
+  /* The shim reads the real manifest so it can fail the way TaleSpire fails.
+     Without an api.interop.id, TS.sync.send rejects every call with
+     symbioteManifestMissingInteropId - and a symbiote missing one works
+     perfectly on one machine and not at all between two, which is precisely
+     the bug you do not want to find at the table. */
+  var interopId = null, manifestRead = false;
+  try {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', 'manifest.json', false);      /* sync: settled before boot */
+    xhr.send(null);
+    if (xhr.status >= 200 && xhr.status < 400) {
+      var m = JSON.parse(xhr.responseText);
+      interopId = m && m.api && m.api.interop && m.api.interop.id || null;
+      manifestRead = true;
+    }
+  } catch (e) { /* served from somewhere without it; do not block development */ }
+
   /* Build the nested result tree TaleSpire returns for a roll string. */
   function resultTreeFor(rollStr) {
     var terms = window.VT.dice.parse(rollStr);
@@ -131,6 +148,11 @@
            real 3,853-character shop broadcast reached the table before anyone
            noticed it could not fit. Fail here the way the real thing does. */
         send: function (str, target) {
+          if (manifestRead && !interopId) {
+            var noId = new Error('symbioteManifestMissingInteropId');
+            console.warn('[TS.sync.send REJECTED] no api.interop.id in manifest.json');
+            return Promise.reject(noId);
+          }
           if (typeof str === 'string' && str.length > 500) {
             var err = new Error('string too long: max length is 500, length was ' + str.length);
             console.warn('[TS.sync.send REJECTED]', err.message);

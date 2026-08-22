@@ -95,12 +95,43 @@ function build(name) {
     process.exit(1);
   }
 
+  /* sanity: the interop id.
+
+     TS.sync.send does nothing at all without one - it rejects with
+     symbioteManifestMissingInteropId - so a symbiote that talks to other
+     clients must declare it, and it must be a real UUIDv4. Shipping without one
+     looks fine on a single machine and fails the moment two people try to use
+     it together, which is the worst way to find out. */
+  const interop = manifest.api && manifest.api.interop && manifest.api.interop.id;
+  const UUID4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (!interop) {
+    console.error('ERROR [' + name + ']: manifest has no api.interop.id - sync will not work.');
+    process.exit(1);
+  }
+  if (!UUID4.test(interop)) {
+    console.error('ERROR [' + name + ']: api.interop.id "' + interop + '" is not a UUIDv4.');
+    process.exit(1);
+  }
+  INTEROP_SEEN[name] = interop;
+
   const files = fs.readdirSync(OUT);
   const size = files.reduce((n, f) => n + fs.statSync(path.join(OUT, f)).size, 0);
   console.log('Wrote dist/' + name + '/  "' + manifest.name + '"  (' +
     files.length + ' files, ' + (size / 1024).toFixed(0) + ' KB)');
 }
 
+const INTEROP_SEEN = {};
 SYMBIOTES.forEach(build);
+
+/* Two symbiotes sharing an interop id is how the API lets them message each
+   other - but TaleSpire would not load ours while they did, and each one only
+   needs to reach its own copies on other clients. Keep them distinct, and say
+   so loudly if they ever drift back together. */
+const usedIds = Object.keys(INTEROP_SEEN).map(k => INTEROP_SEEN[k]);
+if (new Set(usedIds).size !== usedIds.length) {
+  console.error('ERROR: symbiotes share an interop id:', INTEROP_SEEN);
+  process.exit(1);
+}
+
 console.log('\nInstall by copying those folders into');
 console.log('  %AppData%\\..\\LocalLow\\BouncyRock Entertainment\\TaleSpire\\Symbiotes\\');

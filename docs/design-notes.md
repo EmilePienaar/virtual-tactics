@@ -773,6 +773,36 @@ one import/export path, so a file written by either is normalised the same way.
 
 ---
 
+## The interop id is not optional
+
+`api.interop.id` in the manifest is what makes `TS.sync.send` work at all.
+Without one every call rejects with `symbioteManifestMissingInteropId`, and the
+docs are explicit: it is "needed to use 'sync' calls in the API."
+
+It is easy to read the name as being only about *inter*-symbiote messaging - one
+symbiote talking to a different one - and conclude a symbiote that only talks to
+copies of itself does not need it. That is wrong, and wrong in a way that hides:
+everything works on one machine, where there is nobody to sync with, and fails
+the moment a second person joins.
+
+The id must be a UUIDv4, and ours are now **one per symbiote** rather than a
+shared one. Sharing an id is the documented way to let two different symbiotes
+message each other, and Tale Shop originally used it to write into Tale Sheet
+directly - but TaleSpire would not load them while they shared one, and neither
+needs it: each only has to reach its own copies on other clients, which works
+because every player runs the same symbiote and so carries the same id.
+
+Handing loot between them is done with a copied code instead, which needs no
+link between the two symbiotes at all.
+
+The build refuses to produce a symbiote whose manifest has no interop id, whose
+id is not a valid UUIDv4, or whose id collides with the other symbiote's. The
+dev shim reads the real manifest and rejects `sync.send` exactly as TaleSpire
+does when the id is missing. Both guards exist because the failure is invisible
+in single-machine testing, which is the only kind of testing that is cheap.
+
+---
+
 ## Messages have to fit in 500 characters
 
 `TS.sync.send` refuses any payload longer than 500 characters:
