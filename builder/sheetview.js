@@ -28,7 +28,6 @@
   var VT = window.VT, U = VT.util, el = U.el;
 
   var log = [];          /* most recent first */
-  var logHost = null;
 
   /* ---- storage: the sheet's blob <-> the Forge's roster ------------------ */
 
@@ -102,17 +101,51 @@
     drawLog();
   }
 
+  /* The log is a tray that shows up when dice are thrown and gets out of the
+     way otherwise. Reading your own sheet is most of what you do on this tab,
+     and a permanent panel for something that is empty most of the time was
+     taking rail space to say nothing. */
+  var tray = null, trayBody = null, minimised = false;
+
+  function buildTray() {
+    if (tray) return tray;
+    trayBody = el('div', { class: 'tray-body' });
+    var title = el('span', { class: 'tray-title' }, ['Dice']);
+    var min = el('button', { class: 'tray-btn', title: 'Minimise' }, ['\u2013']);
+    var close = el('button', { class: 'tray-btn', title: 'Clear and close' }, ['\u00d7']);
+
+    min.addEventListener('click', function () {
+      minimised = !minimised;
+      tray.classList.toggle('min', minimised);
+      min.textContent = minimised ? '\u25b2' : '\u2013';
+      min.title = minimised ? 'Show the last rolls' : 'Minimise';
+    });
+    close.addEventListener('click', function () {
+      log.length = 0;
+      tray.classList.add('gone');
+    });
+
+    tray = el('div', { class: 'dicetray gone' }, [
+      el('div', { class: 'tray-head' }, [title, min, close]),
+      trayBody
+    ]);
+    document.body.appendChild(tray);
+    return tray;
+  }
+
   function drawLog() {
-    if (!logHost) return;
-    U.clear(logHost);
-    if (!log.length) {
-      logHost.appendChild(el('p', { class: 'tiny' }, [
-        'Rolls appear here. In TaleSpire the same buttons throw real dice instead.'
-      ]));
-      return;
-    }
-    log.forEach(function (r, i) {
-      logHost.appendChild(el('div', { class: 'rolline' + (i ? '' : ' fresh') }, [
+    buildTray();
+    if (!log.length) { tray.classList.add('gone'); return; }
+    tray.classList.remove('gone');
+    /* A new roll while minimised is still worth a glance, so the newest line
+       shows in the header strip rather than forcing the tray back open. */
+    tray.querySelector('.tray-title').textContent = minimised
+      ? log[0].name + ' \u2192 ' + (log[0].total == null ? '?' : log[0].total)
+      : 'Dice';
+
+    U.clear(trayBody);
+    log.slice(0, 12).forEach(function (r, i) {
+      trayBody.appendChild(el('div', { class: 'rolline' + (i ? '' : ' fresh') }, [
         el('span', { class: 'rn' }, [r.name]),
         el('span', { class: 'rd' }, [r.dice.length ? '[' + r.dice.join(', ') + ']' : '']),
         el('span', { class: 'rt' }, [r.total == null ? '?' : String(r.total)])
@@ -246,9 +279,12 @@
      likes and this just runs again. */
   var GROUPS = [
     { key: 'play',  label: 'Play',
-      match: /^(abilities|skills|tools|actions|custom roll|conditions|wild shape)$|^$/i },
-    { key: 'magic', label: 'Magic',
-      match: /^(spell slots|spells|resources|pact magic|prepared)/i },
+      match: /^(abilities|skills|tools|actions|custom roll|conditions|wild shape|resources)$|^$/i },
+    /* Spells are their own section rather than a general "magic" one: the
+       slots now sit inside the spell list, so there is nothing else left for a
+       magic section to hold. */
+    { key: 'spells', label: 'Spells',
+      match: /^(spells|spell slots|pact magic)/i },
     { key: 'gear',  label: 'Gear',
       match: /^(coin|inventory|attunement|collect from)/i },
     { key: 'about', label: 'Character',
@@ -386,19 +422,10 @@
       return;
     }
 
-    /* The roll log earns its space only when there is something in it, so it
-       stays small and the Clear button lives in the header rather than taking
-       a row of its own. */
-    var head = el('div', { class: 'sec-h' }, ['Dice']);
-    head.appendChild(el('button', {
-      class: 'lnk', title: 'Clear the log',
-      onClick: function () { log.length = 0; drawLog(); }
-    }, ['clear']));
-
-    side.appendChild(el('div', { class: 'sec' }, [
-      head,
-      el('div', { class: 'sec-b' }, [(logHost = el('div', { class: 'rolllog' }))])
-    ]));
+    /* Nothing goes in the rail, and the dice tray floats, so give the sheet the
+       whole width rather than leaving an empty panel beside it. */
+    document.getElementById('bmain').classList.add('no-rail');
+    buildTray();
     drawLog();
   }
 
@@ -409,7 +436,8 @@
     if (!host) return;
     host.classList.add('hidden');
     document.body.appendChild(host);
-    logHost = null;
+    document.getElementById('bmain').classList.remove('no-rail');
+    if (tray) tray.classList.add('gone');
   }
 
   VT.sheetView = { render: render, hide: hide, roster: roster };

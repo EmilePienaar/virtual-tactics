@@ -801,6 +801,23 @@ handler rather than replacing it - the sheet uses those same results for death
 saves and hit dice, and quietly stealing them would break it in ways that only
 appear mid-fight.
 
+### Spells and their slots in one place
+
+Spells used to be mixed into the Actions card, and the slots that pay for them
+lived in a separate card further down. That meant a caster's actual attacks were
+buried under forty spells, and answering "can I cast this" took two trips.
+
+They are one card now, grouped by level, with each level's slots at the head of
+its own section - cantrips first at will, then 1st level with its 4/4, and so
+on. That is D&D Beyond's arrangement and it is right for the same reason: what
+you can cast and what you have left to cast it with are the same question.
+
+A level with slots but nothing prepared still gets a row, because an empty 3rd
+level is how you notice you can upcast into it. Warlock pact slots keep their
+own row, being a separate pool on a separate timer.
+
+This lives in sheet.js, so the symbiote and the Forge both have it.
+
 ### Sections, not columns
 
 The sheet is one long strip, which is right in a phone-width panel and tiring on

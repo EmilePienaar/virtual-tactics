@@ -802,6 +802,16 @@ details > div { padding: 0 8px 8px; }
 }
 .card.wildshape h3 { color: var(--green, #8ec97f); }
 
+/* ---- the spellbook: each level's slots at the head of its own section ---- */
+.spell-head {
+  display: flex; align-items: center; gap: 6px;
+  margin: 10px 0 2px; padding: 3px 6px;
+  background: #1a1824; border-radius: 4px;
+  border-left: 2px solid var(--gold-dim);
+}
+.spell-head .lbl { flex: 1; font-size: 11px; color: var(--gold); letter-spacing: .04em; }
+.spell-head .sub { color: var(--ink-faint); letter-spacing: 0; }
+
 /* The symbiote sheet, hosted inside the Forge.
 
    sheet.css is written for a panel that owns its window. Rather than editing
@@ -828,7 +838,6 @@ details > div { padding: 0 8px 8px; }
   padding: 10px 12px;
   overflow-x: hidden;
   overflow-y: auto;
-  max-width: 760px;
 }
 #sheetHost #toast { position: fixed; bottom: 14px; right: 14px; z-index: 60; }
 
@@ -848,29 +857,57 @@ details > div { padding: 0 8px 8px; }
 
 /* Show one section at a time. "all" is the Edit and Build tabs, which are
    sheet.js's own and are not carved up. */
-#sheetHost #view[data-grp="play"]  > *:not([data-group="play"]),
-#sheetHost #view[data-grp="magic"] > *:not([data-group="magic"]),
-#sheetHost #view[data-grp="gear"]  > *:not([data-group="gear"]),
-#sheetHost #view[data-grp="about"] > *:not([data-group="about"]) { display: none; }
+#sheetHost #view[data-grp="play"]   > *:not([data-group="play"]),
+#sheetHost #view[data-grp="spells"] > *:not([data-group="spells"]),
+#sheetHost #view[data-grp="gear"]   > *:not([data-group="gear"]),
+#sheetHost #view[data-grp="about"]  > *:not([data-group="about"]) { display: none; }
 
-/* ---- the roll log, in the Forge side rail ---- */
-.rolllog { display: flex; flex-direction: column; gap: 2px; max-height: 200px; overflow-y: auto; }
+/* ---- the dice tray ----------------------------------------------------
+   A floating panel rather than a rail section: reading your sheet is most of
+   what this tab is for, and a permanent box for something empty most of the
+   time was rail space spent saying nothing. It appears on the first roll and
+   can be minimised to a single line or dismissed entirely. */
+.dicetray {
+  position: fixed; right: 16px; bottom: 16px; z-index: 80;
+  width: 232px; border-radius: 7px; overflow: hidden;
+  background: #1a1824; border: 1px solid var(--line);
+  box-shadow: 0 6px 22px rgba(0,0,0,.45);
+  font-size: 11px;
+}
+.dicetray.gone { display: none; }
+
+.tray-head {
+  display: flex; align-items: center; gap: 4px;
+  padding: 4px 6px 4px 9px;
+  background: #221f2c; border-bottom: 1px solid var(--line);
+}
+.tray-title {
+  flex: 1; font-size: 10px; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--gold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tray-btn {
+  width: 18px; height: 18px; line-height: 1; flex: none;
+  color: var(--ink-faint); background: none; border: none; cursor: pointer;
+  border-radius: 3px; font-size: 12px;
+}
+.tray-btn:hover { color: var(--ink); background: #2e2a3c; }
+
+.tray-body { max-height: 190px; overflow-y: auto; padding: 4px; }
+.dicetray.min .tray-body { display: none; }
+
 .rolline {
   display: flex; align-items: baseline; gap: 6px;
-  padding: 2px 5px; border-radius: 3px; background: #17151f;
+  padding: 2px 5px; border-radius: 3px;
 }
 .rolline.fresh { background: #1e2a1c; }
-.rolline .rn { flex: 1; font-size: 10px; }
+.rolline .rn { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rolline .rd { font-family: var(--mono); font-size: 9px; color: var(--ink-faint); }
-.rolline .rt { font-family: var(--mono); font-size: 12px; color: var(--gold); min-width: 22px; text-align: right; }
+.rolline .rt { font-family: var(--mono); font-size: 13px; color: var(--gold); min-width: 22px; text-align: right; }
 
-/* a quiet inline action in a section header */
-.sec-h .lnk {
-  margin-left: auto; font-size: 10px; color: var(--ink-faint);
-  background: none; border: none; cursor: pointer; padding: 0;
-}
-.sec-h .lnk:hover { color: var(--gold); }
-.sec-h { display: flex; align-items: baseline; gap: 6px; }
+/* The Sheet tab has nothing for the side rail - the dice tray floats instead -
+   so the sheet takes the full width. */
+#bmain.no-rail > #bside { display: none; }
+#sheetHost #view { max-width: 820px; margin: 0 auto; }
 
 </style>
 </head>
@@ -10783,7 +10820,6 @@ details > div { padding: 0 8px 8px; }
   var VT = window.VT, U = VT.util, el = U.el;
 
   var log = [];          /* most recent first */
-  var logHost = null;
 
   /* ---- storage: the sheet's blob <-> the Forge's roster ------------------ */
 
@@ -10857,17 +10893,51 @@ details > div { padding: 0 8px 8px; }
     drawLog();
   }
 
+  /* The log is a tray that shows up when dice are thrown and gets out of the
+     way otherwise. Reading your own sheet is most of what you do on this tab,
+     and a permanent panel for something that is empty most of the time was
+     taking rail space to say nothing. */
+  var tray = null, trayBody = null, minimised = false;
+
+  function buildTray() {
+    if (tray) return tray;
+    trayBody = el('div', { class: 'tray-body' });
+    var title = el('span', { class: 'tray-title' }, ['Dice']);
+    var min = el('button', { class: 'tray-btn', title: 'Minimise' }, ['\u2013']);
+    var close = el('button', { class: 'tray-btn', title: 'Clear and close' }, ['\u00d7']);
+
+    min.addEventListener('click', function () {
+      minimised = !minimised;
+      tray.classList.toggle('min', minimised);
+      min.textContent = minimised ? '\u25b2' : '\u2013';
+      min.title = minimised ? 'Show the last rolls' : 'Minimise';
+    });
+    close.addEventListener('click', function () {
+      log.length = 0;
+      tray.classList.add('gone');
+    });
+
+    tray = el('div', { class: 'dicetray gone' }, [
+      el('div', { class: 'tray-head' }, [title, min, close]),
+      trayBody
+    ]);
+    document.body.appendChild(tray);
+    return tray;
+  }
+
   function drawLog() {
-    if (!logHost) return;
-    U.clear(logHost);
-    if (!log.length) {
-      logHost.appendChild(el('p', { class: 'tiny' }, [
-        'Rolls appear here. In TaleSpire the same buttons throw real dice instead.'
-      ]));
-      return;
-    }
-    log.forEach(function (r, i) {
-      logHost.appendChild(el('div', { class: 'rolline' + (i ? '' : ' fresh') }, [
+    buildTray();
+    if (!log.length) { tray.classList.add('gone'); return; }
+    tray.classList.remove('gone');
+    /* A new roll while minimised is still worth a glance, so the newest line
+       shows in the header strip rather than forcing the tray back open. */
+    tray.querySelector('.tray-title').textContent = minimised
+      ? log[0].name + ' \u2192 ' + (log[0].total == null ? '?' : log[0].total)
+      : 'Dice';
+
+    U.clear(trayBody);
+    log.slice(0, 12).forEach(function (r, i) {
+      trayBody.appendChild(el('div', { class: 'rolline' + (i ? '' : ' fresh') }, [
         el('span', { class: 'rn' }, [r.name]),
         el('span', { class: 'rd' }, [r.dice.length ? '[' + r.dice.join(', ') + ']' : '']),
         el('span', { class: 'rt' }, [r.total == null ? '?' : String(r.total)])
@@ -11001,9 +11071,12 @@ details > div { padding: 0 8px 8px; }
      likes and this just runs again. */
   var GROUPS = [
     { key: 'play',  label: 'Play',
-      match: /^(abilities|skills|tools|actions|custom roll|conditions|wild shape)$|^$/i },
-    { key: 'magic', label: 'Magic',
-      match: /^(spell slots|spells|resources|pact magic|prepared)/i },
+      match: /^(abilities|skills|tools|actions|custom roll|conditions|wild shape|resources)$|^$/i },
+    /* Spells are their own section rather than a general "magic" one: the
+       slots now sit inside the spell list, so there is nothing else left for a
+       magic section to hold. */
+    { key: 'spells', label: 'Spells',
+      match: /^(spells|spell slots|pact magic)/i },
     { key: 'gear',  label: 'Gear',
       match: /^(coin|inventory|attunement|collect from)/i },
     { key: 'about', label: 'Character',
@@ -11141,19 +11214,10 @@ details > div { padding: 0 8px 8px; }
       return;
     }
 
-    /* The roll log earns its space only when there is something in it, so it
-       stays small and the Clear button lives in the header rather than taking
-       a row of its own. */
-    var head = el('div', { class: 'sec-h' }, ['Dice']);
-    head.appendChild(el('button', {
-      class: 'lnk', title: 'Clear the log',
-      onClick: function () { log.length = 0; drawLog(); }
-    }, ['clear']));
-
-    side.appendChild(el('div', { class: 'sec' }, [
-      head,
-      el('div', { class: 'sec-b' }, [(logHost = el('div', { class: 'rolllog' }))])
-    ]));
+    /* Nothing goes in the rail, and the dice tray floats, so give the sheet the
+       whole width rather than leaving an empty panel beside it. */
+    document.getElementById('bmain').classList.add('no-rail');
+    buildTray();
     drawLog();
   }
 
@@ -11164,7 +11228,8 @@ details > div { padding: 0 8px 8px; }
     if (!host) return;
     host.classList.add('hidden');
     document.body.appendChild(host);
-    logHost = null;
+    document.getElementById('bmain').classList.remove('no-rail');
+    if (tray) tray.classList.add('gone');
   }
 
   VT.sheetView = { render: render, hide: hide, roster: roster };
@@ -11762,20 +11827,22 @@ details > div { padding: 0 8px 8px; }
       view.appendChild(toolCard);
     }
 
-    /* attacks & spells */
-    var acts = el('div', { class: 'card' }, [
-      el('h3', {}, ['Actions']),
-      a.spellDC ? el('div', { class: 'muted', style: { marginBottom: '6px' } }, [
-        'Spell save DC ' + a.spellDC + ' · spell attack ' + sign(a.spellAttack)]) : null
-    ]);
-    (a.actions || []).forEach(function (act) {
-      acts.appendChild(actionRow(a, act));
-      if (act.spellLevel) {
-        var sl = S.castAt[act.name] || act.spellLevel;
-        acts.appendChild(castRow(a, act, sl, VT.upcast.at(act, sl)));
-      }
-    });
+    /* Attacks and abilities. Spells used to be mixed in here, which meant a
+       caster's attacks were buried under forty spells and the slots that pay
+       for them were in a different card again. */
+    var spells = (a.actions || []).filter(function (x) { return x.spellLevel != null; });
+    var plain = (a.actions || []).filter(function (x) { return x.spellLevel == null; });
+
+    var acts = el('div', { class: 'card' }, [el('h3', {}, ['Actions'])]);
+    if (plain.length) {
+      plain.forEach(function (act) { acts.appendChild(actionRow(a, act)); });
+    } else {
+      acts.appendChild(el('div', { class: 'muted' }, ['Nothing but spells.']));
+    }
     view.appendChild(acts);
+
+    var book = spellbookCard(a, spells);
+    if (book) view.appendChild(book);
 
     /* wild shape: the picker, then the active form's own stat block */
     var wsCard = wildShapeCard(a);
@@ -11843,8 +11910,10 @@ details > div { padding: 0 8px 8px; }
       view.appendChild(resCard);
     }
 
-    /* spell slots */
-    if (a.spellSlots || a.pactSlots) {
+    /* Spell slots live with the spells they pay for (see spellbookCard). This
+       card is only for a character who has slots and no spells on the sheet -
+       a multiclass who prepares from a book, or someone still being built. */
+    if ((a.spellSlots || a.pactSlots) && !spells.length) {
       var slotCard = el('div', { class: 'card' }, [el('h3', {}, ['Spell slots'])]);
       if (a.casterLevel && (a.classes || []).length > 1) {
         slotCard.appendChild(el('div', { class: 'muted', style: { marginTop: 0 } }, [
@@ -12102,6 +12171,108 @@ details > div { padding: 0 8px 8px; }
 
   /* The slot picker under a levelled spell: which slot to spend, what it does
      at that level, and a Cast button that actually spends it. */
+  /* Spells, by level, with the slots for each level at the head of its own
+     section.
+
+     The arrangement is D&D Beyond's and it is the right one: what you can cast
+     and what you have left to cast it with are the same question, and keeping
+     them in separate cards meant answering it twice. Cantrips come first and
+     have no slot row, because they cost nothing. */
+  function spellbookCard(a, spells) {
+    if (!spells.length) return null;
+
+    var card = el('div', { class: 'card' }, [el('h3', {}, ['Spells'])]);
+    if (a.spellDC) {
+      card.appendChild(el('div', { class: 'muted', style: { marginBottom: '6px' } }, [
+        'Spell save DC ' + a.spellDC + ' · spell attack ' + sign(a.spellAttack)
+      ]));
+    }
+    if (a.casterLevel && (a.classes || []).length > 1) {
+      card.appendChild(el('div', { class: 'muted' }, [
+        'Combined caster level ' + a.casterLevel + '. Pact slots are counted separately.'
+      ]));
+    }
+
+    /* group by the level the spell is written at */
+    var byLevel = {};
+    spells.forEach(function (sp) {
+      var lv = sp.spellLevel || 0;
+      (byLevel[lv] = byLevel[lv] || []).push(sp);
+    });
+
+    /* Every level worth showing: one that has spells, and one that has slots
+       even if nothing is prepared at it - an empty 3rd-level row is how you
+       notice you can still upcast into it. */
+    var levels = Object.keys(byLevel).map(Number);
+    if (a.spellSlots && a.spellSlots.slots) {
+      a.spellSlots.slots.forEach(function (max, i) {
+        if (max > 0 && levels.indexOf(i + 1) < 0) levels.push(i + 1);
+      });
+    }
+    levels.sort(function (x, y) { return x - y; });
+
+    levels.forEach(function (lv) {
+      card.appendChild(spellLevelHeader(a, lv));
+      (byLevel[lv] || []).forEach(function (act) {
+        card.appendChild(actionRow(a, act));
+        var sl = S.castAt[act.name] || act.spellLevel;
+        if (lv > 0) card.appendChild(castRow(a, act, sl, VT.upcast.at(act, sl)));
+      });
+      if (!(byLevel[lv] || []).length) {
+        card.appendChild(el('div', { class: 'muted', style: { marginLeft: '6px' } }, [
+          'nothing prepared at this level'
+        ]));
+      }
+    });
+
+    /* Warlock pact slots are their own pool on their own timer, so they get
+       their own row rather than being folded into a level above. */
+    var pact = a.pactSlots || (a.spellSlots && a.spellSlots.pact ? a.spellSlots : null);
+    if (pact) {
+      var left = a.pactSlots ? VT.features.pactLeft(a) : VT.features.slotsLeft(a);
+      card.appendChild(slotRow(a, 'Pact slots',
+        '  level ' + (pact.slotLevel || 1) + ' · short rest',
+        left, pact.count, 'pact'));
+    }
+    return card;
+  }
+
+  /* The head of a level's section: its name, and the slots that pay for it. */
+  function spellLevelHeader(a, lv) {
+    if (lv === 0) {
+      return el('div', { class: 'spell-head' }, [
+        el('span', { class: 'lbl' }, ['Cantrips', el('span', { class: 'sub' }, ['  at will'])])
+      ]);
+    }
+    var max = (a.spellSlots && a.spellSlots.slots && a.spellSlots.slots[lv - 1]) || 0;
+    if (!max) {
+      return el('div', { class: 'spell-head' }, [
+        el('span', { class: 'lbl' }, [U.ord(lv) + ' level',
+          el('span', { class: 'sub' }, ['  no slots'])])
+      ]);
+    }
+    return slotRow(a, U.ord(lv) + ' level', '', VT.features.slotsLeft(a, lv), max, lv);
+  }
+
+  /* One spendable pool: a name, how many are left, and a way to change it. */
+  function slotRow(a, label, sub, left, max, key) {
+    return el('div', { class: 'spell-head' }, [
+      el('span', { class: 'lbl' }, [label, sub ? el('span', { class: 'sub' }, [sub]) : null]),
+      el('button', { class: 'btn sm', title: 'Regain a slot',
+        disabled: (a.slotsUsed[key] || 0) <= 0 ? true : null,
+        onClick: function () {
+          a.slotsUsed[key] = Math.max(0, (a.slotsUsed[key] || 0) - 1); save(); render();
+        } }, ['+']),
+      el('span', { class: 'mod', style: { color: left ? 'var(--green)' : 'var(--red)' } },
+        [left + '/' + max]),
+      el('button', { class: 'btn sm', title: 'Spend a slot',
+        disabled: left <= 0 ? true : null,
+        onClick: function () {
+          a.slotsUsed[key] = (a.slotsUsed[key] || 0) + 1; save(); render();
+        } }, ['−'])
+    ]);
+  }
+
   function castRow(a, act, slot, shot) {
     var opts = VT.upcast.slotOptions(a, act);
     var row = el('div', { class: 'castrow' });

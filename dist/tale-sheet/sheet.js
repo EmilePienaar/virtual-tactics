@@ -589,20 +589,22 @@
       view.appendChild(toolCard);
     }
 
-    /* attacks & spells */
-    var acts = el('div', { class: 'card' }, [
-      el('h3', {}, ['Actions']),
-      a.spellDC ? el('div', { class: 'muted', style: { marginBottom: '6px' } }, [
-        'Spell save DC ' + a.spellDC + ' · spell attack ' + sign(a.spellAttack)]) : null
-    ]);
-    (a.actions || []).forEach(function (act) {
-      acts.appendChild(actionRow(a, act));
-      if (act.spellLevel) {
-        var sl = S.castAt[act.name] || act.spellLevel;
-        acts.appendChild(castRow(a, act, sl, VT.upcast.at(act, sl)));
-      }
-    });
+    /* Attacks and abilities. Spells used to be mixed in here, which meant a
+       caster's attacks were buried under forty spells and the slots that pay
+       for them were in a different card again. */
+    var spells = (a.actions || []).filter(function (x) { return x.spellLevel != null; });
+    var plain = (a.actions || []).filter(function (x) { return x.spellLevel == null; });
+
+    var acts = el('div', { class: 'card' }, [el('h3', {}, ['Actions'])]);
+    if (plain.length) {
+      plain.forEach(function (act) { acts.appendChild(actionRow(a, act)); });
+    } else {
+      acts.appendChild(el('div', { class: 'muted' }, ['Nothing but spells.']));
+    }
     view.appendChild(acts);
+
+    var book = spellbookCard(a, spells);
+    if (book) view.appendChild(book);
 
     /* wild shape: the picker, then the active form's own stat block */
     var wsCard = wildShapeCard(a);
@@ -670,8 +672,10 @@
       view.appendChild(resCard);
     }
 
-    /* spell slots */
-    if (a.spellSlots || a.pactSlots) {
+    /* Spell slots live with the spells they pay for (see spellbookCard). This
+       card is only for a character who has slots and no spells on the sheet -
+       a multiclass who prepares from a book, or someone still being built. */
+    if ((a.spellSlots || a.pactSlots) && !spells.length) {
       var slotCard = el('div', { class: 'card' }, [el('h3', {}, ['Spell slots'])]);
       if (a.casterLevel && (a.classes || []).length > 1) {
         slotCard.appendChild(el('div', { class: 'muted', style: { marginTop: 0 } }, [
@@ -929,6 +933,108 @@
 
   /* The slot picker under a levelled spell: which slot to spend, what it does
      at that level, and a Cast button that actually spends it. */
+  /* Spells, by level, with the slots for each level at the head of its own
+     section.
+
+     The arrangement is D&D Beyond's and it is the right one: what you can cast
+     and what you have left to cast it with are the same question, and keeping
+     them in separate cards meant answering it twice. Cantrips come first and
+     have no slot row, because they cost nothing. */
+  function spellbookCard(a, spells) {
+    if (!spells.length) return null;
+
+    var card = el('div', { class: 'card' }, [el('h3', {}, ['Spells'])]);
+    if (a.spellDC) {
+      card.appendChild(el('div', { class: 'muted', style: { marginBottom: '6px' } }, [
+        'Spell save DC ' + a.spellDC + ' · spell attack ' + sign(a.spellAttack)
+      ]));
+    }
+    if (a.casterLevel && (a.classes || []).length > 1) {
+      card.appendChild(el('div', { class: 'muted' }, [
+        'Combined caster level ' + a.casterLevel + '. Pact slots are counted separately.'
+      ]));
+    }
+
+    /* group by the level the spell is written at */
+    var byLevel = {};
+    spells.forEach(function (sp) {
+      var lv = sp.spellLevel || 0;
+      (byLevel[lv] = byLevel[lv] || []).push(sp);
+    });
+
+    /* Every level worth showing: one that has spells, and one that has slots
+       even if nothing is prepared at it - an empty 3rd-level row is how you
+       notice you can still upcast into it. */
+    var levels = Object.keys(byLevel).map(Number);
+    if (a.spellSlots && a.spellSlots.slots) {
+      a.spellSlots.slots.forEach(function (max, i) {
+        if (max > 0 && levels.indexOf(i + 1) < 0) levels.push(i + 1);
+      });
+    }
+    levels.sort(function (x, y) { return x - y; });
+
+    levels.forEach(function (lv) {
+      card.appendChild(spellLevelHeader(a, lv));
+      (byLevel[lv] || []).forEach(function (act) {
+        card.appendChild(actionRow(a, act));
+        var sl = S.castAt[act.name] || act.spellLevel;
+        if (lv > 0) card.appendChild(castRow(a, act, sl, VT.upcast.at(act, sl)));
+      });
+      if (!(byLevel[lv] || []).length) {
+        card.appendChild(el('div', { class: 'muted', style: { marginLeft: '6px' } }, [
+          'nothing prepared at this level'
+        ]));
+      }
+    });
+
+    /* Warlock pact slots are their own pool on their own timer, so they get
+       their own row rather than being folded into a level above. */
+    var pact = a.pactSlots || (a.spellSlots && a.spellSlots.pact ? a.spellSlots : null);
+    if (pact) {
+      var left = a.pactSlots ? VT.features.pactLeft(a) : VT.features.slotsLeft(a);
+      card.appendChild(slotRow(a, 'Pact slots',
+        '  level ' + (pact.slotLevel || 1) + ' · short rest',
+        left, pact.count, 'pact'));
+    }
+    return card;
+  }
+
+  /* The head of a level's section: its name, and the slots that pay for it. */
+  function spellLevelHeader(a, lv) {
+    if (lv === 0) {
+      return el('div', { class: 'spell-head' }, [
+        el('span', { class: 'lbl' }, ['Cantrips', el('span', { class: 'sub' }, ['  at will'])])
+      ]);
+    }
+    var max = (a.spellSlots && a.spellSlots.slots && a.spellSlots.slots[lv - 1]) || 0;
+    if (!max) {
+      return el('div', { class: 'spell-head' }, [
+        el('span', { class: 'lbl' }, [U.ord(lv) + ' level',
+          el('span', { class: 'sub' }, ['  no slots'])])
+      ]);
+    }
+    return slotRow(a, U.ord(lv) + ' level', '', VT.features.slotsLeft(a, lv), max, lv);
+  }
+
+  /* One spendable pool: a name, how many are left, and a way to change it. */
+  function slotRow(a, label, sub, left, max, key) {
+    return el('div', { class: 'spell-head' }, [
+      el('span', { class: 'lbl' }, [label, sub ? el('span', { class: 'sub' }, [sub]) : null]),
+      el('button', { class: 'btn sm', title: 'Regain a slot',
+        disabled: (a.slotsUsed[key] || 0) <= 0 ? true : null,
+        onClick: function () {
+          a.slotsUsed[key] = Math.max(0, (a.slotsUsed[key] || 0) - 1); save(); render();
+        } }, ['+']),
+      el('span', { class: 'mod', style: { color: left ? 'var(--green)' : 'var(--red)' } },
+        [left + '/' + max]),
+      el('button', { class: 'btn sm', title: 'Spend a slot',
+        disabled: left <= 0 ? true : null,
+        onClick: function () {
+          a.slotsUsed[key] = (a.slotsUsed[key] || 0) + 1; save(); render();
+        } }, ['−'])
+    ]);
+  }
+
   function castRow(a, act, slot, shot) {
     var opts = VT.upcast.slotOptions(a, act);
     var row = el('div', { class: 'castrow' });

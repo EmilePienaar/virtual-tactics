@@ -90,7 +90,10 @@ Day to day:
 - **Levelling** — the Edit tab re-derives HP, proficiency and attack bonuses from
   your original build, and keeps your damage taken, conditions and anything you
   added by hand.
-- **Resources** — spell slots, Ki, Rage, Bardic Inspiration, Channel Divinity,
+- **Spells are grouped by level**, with each level's slots at the head of its own
+  section — cantrips at will, then 1st level with its 4/4, and so on. What you
+  can cast and what you have left to cast it with sit together.
+- **Resources** — Ki, Rage, Bardic Inspiration, Channel Divinity,
   Superiority Dice, Lay on Hands, Action Surge. Short and long rests restore the
   right ones; a short rest lets you spend hit dice, which roll in the tray.
 - **Wild Shape** lists the beasts you can become, filtered by your druid level,
