@@ -28,6 +28,7 @@ const ENGINE = [
   'src/data/upcast.js',
   'src/data/features.js',
   'src/data/featuretext.js',
+  'src/data/wildshape.js',
   'src/data/shops.js',
   'src/data/loot.js',
   'src/data/choices.js',

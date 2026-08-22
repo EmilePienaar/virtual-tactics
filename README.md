@@ -93,6 +93,10 @@ Day to day:
 - **Resources** — spell slots, Ki, Rage, Bardic Inspiration, Channel Divinity,
   Superiority Dice, Lay on Hands, Action Surge. Short and long rests restore the
   right ones; a short rest lets you spend hit dice, which roll in the tray.
+- **Wild Shape** lists the beasts you can become, filtered by your druid level,
+  and shows the chosen form's stat block below your own — its AC, hit points,
+  speed and attacks, all rollable. Its hit points are tracked separately, and
+  closing the panel is all it takes to revert; your own sheet is never altered.
 - **Class features become rollable actions** where they can be. The common ones
   are hand-written; beyond those, attack and saving-throw features are read out
   of their own printed text — Radiant Sun Bolt, Quivering Palm and around thirty

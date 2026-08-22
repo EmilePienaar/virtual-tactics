@@ -596,48 +596,19 @@
         'Spell save DC ' + a.spellDC + ' · spell attack ' + sign(a.spellAttack)]) : null
     ]);
     (a.actions || []).forEach(function (act) {
-      var left = VT.actor.usesLeft(a, act);
-      var line = el('div', { class: 'rollrow' }, [
-        el('span', { class: 'lbl' }, [
-          act.name + (act.cost === 'bonus' ? '  ·  bonus' : ''),
-          el('span', { class: 'sub' }, ['  ' + describe(act)])
-        ])
-      ]);
-      if (act.kind === 'melee' || act.kind === 'ranged') {
-        line.appendChild(el('button', { class: 'btn sm', title: 'Attack roll', onClick: function () {
-          rollD20(act.name, act.toHit || 0);
-          if (act.uses) { VT.actor.spendUse(a, act); save(); }
-        } }, [sign(act.toHit || 0)]));
+      acts.appendChild(actionRow(a, act));
+      if (act.spellLevel) {
+        var sl = S.castAt[act.name] || act.spellLevel;
+        acts.appendChild(castRow(a, act, sl, VT.upcast.at(act, sl)));
       }
-      if (act.kind === 'save' && act.dc) {
-        line.appendChild(act.autoHit
-          ? el('span', { class: 'mod', title: 'Hits without an attack roll or save' }, ['auto'])
-          : el('span', { class: 'mod', title: 'Save DC' }, ['DC' + act.dc]));
-      }
-      /* A levelled spell is cast AT a slot level, and the numbers follow. */
-      var slot = act.spellLevel ? (S.castAt[act.name] || act.spellLevel) : 0;
-      var shot = slot ? VT.upcast.at(act, slot) : { dmg: act.dmg, count: act.count || 1, note: '' };
-
-      if (shot.dmg && shot.dmg !== '0') {
-        var label = (shot.count > 1 ? shot.count + '\u00d7' : '') + shot.dmg;
-        line.appendChild(el('button', { class: 'btn sm',
-          title: act.kind === 'heal' ? 'Roll healing' : 'Roll damage',
-          onClick: function () {
-            var expr = shot.count > 1 ? VT.upcast.totalExpr(act, slot) : shot.dmg;
-            if (act.kind === 'heal') rollRaw(act.name + ' healing', expr);
-            else rollDamage(act.name + (shot.levels ? ' (' + U.ord(slot) + ')' : ''), expr);
-            if (act.uses && act.kind !== 'melee' && act.kind !== 'ranged') { VT.actor.spendUse(a, act); save(); }
-          } }, [label]));
-      }
-      if (act.uses) {
-        line.appendChild(el('span', { class: 'mod', title: 'Uses remaining',
-          style: { color: left ? 'var(--green)' : 'var(--red)' } }, [left + '/' + act.uses.max]));
-      }
-      acts.appendChild(line);
-
-      if (act.spellLevel) acts.appendChild(castRow(a, act, slot, shot));
     });
     view.appendChild(acts);
+
+    /* wild shape: the picker, then the active form's own stat block */
+    var wsCard = wildShapeCard(a);
+    if (wsCard) view.appendChild(wsCard);
+    var wsPanel = wildShapePanel(a);
+    if (wsPanel) view.appendChild(wsPanel);
 
     /* coin */
     a.coins = a.coins || VT.coin.emptyPurse();
@@ -1006,6 +977,236 @@
 
   function stat(k, v) {
     return el('div', {}, [el('div', { class: 'k' }, [k]), el('div', { class: 'v' }, [String(v)])]);
+  }
+
+  /* ---- wild shape --------------------------------------------------------
+
+     A form is shown BESIDE the character rather than replacing them. Swapping
+     a sheet out means being able to put it back, and every bug in that shape
+     costs somebody their character; this way dismissing a form deletes one
+     object and touches nothing else.
+
+     The beast keeps its own hit points, because that is the number actually
+     being tracked at the table - damage goes to the form until it drops, and
+     then you are yourself again with the hit points you had. */
+
+  function wildShapeCard(a) {
+    var lim = VT.wildshape.limits(a);
+    var special = VT.wildshape.specials(a);
+    if (!lim && !special.length) return null;          /* not a shapechanger */
+
+    var card = el('div', { class: 'card' }, [el('h3', {}, ['Wild Shape'])]);
+
+    if (a.wildShape) {
+      card.appendChild(el('div', { class: 'ok' }, [
+        'Currently ' + a.wildShape.name + '. Its stat block is below.'
+      ]));
+      card.appendChild(el('div', { class: 'btnrow' }, [
+        el('button', { class: 'btn sm danger', onClick: function () {
+          a.wildShape = null; save(); render();
+          toast('Back to your own form', 'ok');
+        } }, ['Revert to your own form'])
+      ]));
+      return card;
+    }
+
+    if (special.length) {
+      var srow = el('div', { class: 'btnrow' });
+      special.forEach(function (f) {
+        srow.appendChild(el('button', { class: 'btn sm', title: f.parent || '', onClick: function () {
+          toast(f.name + (f.parent ? ' (' + f.parent + ')' : '') +
+                ' — its actions are already in your list', 'ok');
+        } }, [f.name]));
+      });
+      card.appendChild(el('div', { class: 'muted' }, [
+        'Forms that keep your own stat block. Their actions are already in your ' +
+        'action list, so there is nothing to switch on.'
+      ]));
+      card.appendChild(srow);
+    }
+
+    if (!lim) return card;
+    if (!FT.loaded) {
+      card.appendChild(el('div', { class: 'warn' }, [
+        'Connect your 5etools data to browse beasts.'
+      ]));
+      return card;
+    }
+
+    card.appendChild(el('div', { class: 'muted', style: { marginTop: '8px' } }, [
+      lim.moon
+        ? 'Circle of the Moon: up to CR ' + VT.wildshape.crLabel(lim.maxCr) + '.'
+        : 'Up to CR ' + VT.wildshape.crLabel(lim.maxCr) +
+          (lim.fly ? '' : ', no flying speed') + (lim.swim ? '' : ', no swimming speed') + '.'
+    ]));
+
+    var q = '', showAll = false;
+    var results = el('div', { class: 'goods', style: { maxHeight: '190px', overflowY: 'auto' } });
+
+    function draw() {
+      U.clear(results);
+      var list = VT.wildshape.beasts(a, { all: showAll });
+      var shown = (q
+        ? list.filter(function (m) { return String(m.name).toLowerCase().indexOf(q) >= 0; })
+        : list).slice(0, 60);
+      if (!shown.length) {
+        results.appendChild(el('div', { class: 'muted' }, ['No beasts match.']));
+        return;
+      }
+      shown.forEach(function (m) {
+        results.appendChild(el('div', { class: 'rollrow' }, [
+          el('span', { class: 'lbl' }, [
+            m.name,
+            el('span', { class: 'sub' }, ['  CR ' + VT.wildshape.crLabel(VT.convert.crOf(m)) +
+              ' · AC ' + VT.convert.acOf(m) + ' · ' + VT.convert.hpOf(m) + ' hp'])
+          ]),
+          el('button', { class: 'btn sm primary', onClick: function () {
+            a.wildShape = VT.wildshape.assume(m);
+            /* Transforming costs a use. Spent here rather than left to the
+               player, because the whole point is that the sheet keeps count -
+               and the resource has its own +/- if a DM rules otherwise. */
+            var res = (a.resources || []).find(function (r) { return r.key === 'wildshape'; });
+            var short = res && res.used >= res.max;
+            if (res && !short) res.used++;
+            save(); render();
+            toast('Wild shaped into ' + m.name +
+              (short ? ' — but you have no uses left' : ''), short ? 'err' : 'ok');
+          } }, ['Become'])
+        ]));
+      });
+    }
+
+    card.appendChild(el('input', { type: 'search', placeholder: 'search beasts…',
+      onInput: U.debounce(function (e) { q = e.target.value.toLowerCase(); draw(); }, 120) }));
+    card.appendChild(results);
+    card.appendChild(el('div', { class: 'btnrow' }, [
+      el('button', { class: 'btn sm', onClick: function () { showAll = !showAll; draw(); } },
+        ['Ignore level limits'])
+    ]));
+    card.appendChild(el('p', { class: 'muted' }, [
+      'The list follows the printed limits. Your DM has the last word, so the ' +
+      'button above shows every beast in your data.'
+    ]));
+    draw();
+    return card;
+  }
+
+  /* The form's own stat block, appended below the character's. */
+  function wildShapePanel(a) {
+    var w = a.wildShape;
+    if (!w) return null;
+    var keep = VT.wildshape.keeps(a);
+
+    var card = el('div', { class: 'card wildshape' }, [
+      el('h3', {}, [w.name + '  ·  ' + (w.size || '') + ' beast' +
+        (w.cr != null ? '  ·  CR ' + VT.wildshape.crLabel(w.cr) : '')])
+    ]);
+
+    card.appendChild(el('div', { class: 'bigstats' }, [
+      stat('AC', w.ac), stat('HP', w.hp + '/' + w.hpMax),
+      stat('SPD', w.speed), stat('STR', w.abilities ? w.abilities.str : '—')
+    ]));
+
+    var frac = U.clamp(w.hp / Math.max(1, w.hpMax), 0, 1);
+    card.appendChild(el('div', { class: 'hpbar' }, [
+      el('i', { style: { width: (frac * 100) + '%',
+        background: frac > .5 ? 'linear-gradient(180deg,#8ec97f,#5d8f52)'
+                  : frac > .25 ? 'linear-gradient(180deg,#e0c46a,#a8873c)'
+                  : 'linear-gradient(180deg,#d97b74,#8f4640)' } }),
+      el('span', {}, [w.hp + ' / ' + w.hpMax])
+    ]));
+
+    var amount = 5;
+    card.appendChild(el('div', { class: 'hpctl' }, [
+      el('button', { class: 'btn sm danger', onClick: function () {
+        w.hp = Math.max(0, w.hp - amount);
+        save(); render();
+        if (w.hp === 0) toast('The form drops — you revert with the hit points you had', 'err');
+      } }, ['\u2212 Damage']),
+      el('input', { type: 'number', value: 5, min: 0,
+        onInput: function (e) { amount = Math.max(0, parseInt(e.target.value, 10) || 0); } }),
+      el('button', { class: 'btn sm', onClick: function () {
+        w.hp = Math.min(w.hpMax, w.hp + amount); save(); render();
+      } }, ['+ Heal'])
+    ]));
+
+    if (w.hp === 0) {
+      card.appendChild(el('div', { class: 'warn' }, [
+        'The form has dropped. Revert, and any damage past this point carries ' +
+        'over to your own hit points.'
+      ]));
+    }
+
+    card.appendChild(el('div', { class: 'muted', style: { marginTop: '6px' } }, [
+      'You keep your own INT ' + (keep.int || '—') + ', WIS ' + (keep.wis || '—') +
+      ', CHA ' + (keep.cha || '—') + ', and your proficiencies.' +
+      (w.senses ? '  Senses: ' + w.senses : '')
+    ]));
+
+    if ((w.actions || []).length) {
+      card.appendChild(el('div', { class: 'muted', style: { marginTop: '8px' } }, [
+        w.name + '\u2019s actions'
+      ]));
+      w.actions.forEach(function (act) {
+        card.appendChild(actionRow(a, act));
+      });
+    }
+
+    if (w.notes) {
+      card.appendChild(el('p', { class: 'muted', style: { whiteSpace: 'pre-wrap' } }, [w.notes]));
+    }
+
+    card.appendChild(el('div', { class: 'btnrow', style: { marginTop: '8px' } }, [
+      el('button', { class: 'btn sm danger', onClick: function () {
+        a.wildShape = null; save(); render();
+      } }, ['Close ' + w.name])
+    ]));
+    return card;
+  }
+
+  /* One rollable action. Pulled out of the actions card so a wild-shaped form
+     can list the beast's attacks through exactly the same path - the rolls, the
+     advantage handling and the crit toggle are the sheet's, not a second
+     implementation that drifts from it. */
+  function actionRow(a, act) {
+    var left = VT.actor.usesLeft(a, act);
+    var line = el('div', { class: 'rollrow' }, [
+      el('span', { class: 'lbl' }, [
+        act.name + (act.cost === 'bonus' ? '  \u00b7  bonus' : ''),
+        el('span', { class: 'sub' }, ['  ' + describe(act)])
+      ])
+    ]);
+    if (act.kind === 'melee' || act.kind === 'ranged') {
+      line.appendChild(el('button', { class: 'btn sm', title: 'Attack roll', onClick: function () {
+        rollD20(act.name, act.toHit || 0);
+        if (act.uses) { VT.actor.spendUse(a, act); save(); }
+      } }, [sign(act.toHit || 0)]));
+    }
+    if (act.kind === 'save' && act.dc) {
+      line.appendChild(act.autoHit
+        ? el('span', { class: 'mod', title: 'Hits without an attack roll or save' }, ['auto'])
+        : el('span', { class: 'mod', title: 'Save DC' }, ['DC' + act.dc]));
+    }
+    /* A levelled spell is cast AT a slot level, and the numbers follow. */
+    var slot = act.spellLevel ? (S.castAt[act.name] || act.spellLevel) : 0;
+    var shot = slot ? VT.upcast.at(act, slot) : { dmg: act.dmg, count: act.count || 1, note: '' };
+
+    if (shot.dmg && shot.dmg !== '0') {
+      var label = (shot.count > 1 ? shot.count + '\u00d7' : '') + shot.dmg;
+      line.appendChild(el('button', { class: 'btn sm',
+        title: act.kind === 'heal' ? 'Roll healing' : 'Roll damage',
+        onClick: function () {
+          var expr = shot.count > 1 ? VT.upcast.totalExpr(act, slot) : shot.dmg;
+          if (act.kind === 'heal') rollRaw(act.name + ' healing', expr);
+          else rollDamage(act.name + (shot.levels ? ' (' + U.ord(slot) + ')' : ''), expr);
+          if (act.uses && act.kind !== 'melee' && act.kind !== 'ranged') { VT.actor.spendUse(a, act); save(); }
+        } }, [label]));
+    }
+    if (act.uses) {
+      line.appendChild(el('span', { class: 'mod', title: 'Uses remaining',
+        style: { color: left ? 'var(--green)' : 'var(--red)' } }, [left + '/' + act.uses.max]));
+    }
+    return line;
   }
 
   function describe(act) {

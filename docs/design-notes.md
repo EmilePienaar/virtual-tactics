@@ -773,6 +773,40 @@ one import/export path, so a file written by either is normalised the same way.
 
 ---
 
+## Wild Shape, without swapping the character out
+
+Wild Shape is not a modifier - it is a second stat block. Beast form replaces
+AC, hit points, speed, size and attacks, while you keep your own mental scores,
+proficiencies and features.
+
+The obvious implementation is to push the character aside and adopt the beast.
+The obvious implementation is also the one where a bug costs somebody their
+character, because it has to put them back correctly and there is no undo at a
+table. So a form is built as a **separate object shown beside the sheet**.
+Dismissing it deletes one field and touches nothing else, and the character's
+own hit points are provably untouched while shifted - which is the property
+worth having.
+
+The beast keeps its own hit points on that object, because that is the number
+actually being tracked: damage goes to the form until it drops.
+
+The beast's attacks are rendered through the sheet's own `actionRow`, extracted
+for the purpose rather than reimplemented, so advantage, the crit toggle and the
+dice tray behave identically whether a bear is biting or a monk is punching.
+
+**One trap worth recording.** `convert.crOf` returns the printed challenge
+rating as a *string*: `"1/2"`, `"24"`, or null. Comparing that to a number half
+works - `"24" > 1` coerces and behaves - but `"1/2" > 0.25` is `NaN > 0.25`,
+which is false, so every fractional CR silently passed whatever limit was set
+and a 2nd-level druid was offered CR 1/2 beasts. Parsing the fraction first
+fixes it; the half-working coercion is what made it invisible.
+
+The level limits bound what is *offered*, and there is a button to ignore them,
+because the list is a convenience and the last word at a table is never the
+software's.
+
+---
+
 ## Reading actions out of feature text
 
 `features.js` is a curated table and says, correctly, that you cannot read an

@@ -195,3 +195,10 @@ details > div { padding: 0 8px 8px; }
    by default, which inside a flex row resolves to "all of it" and squeezes the
    item name to nothing. */
 .rollrow input[type=number] { width: 58px; text-align: center; flex: none; }
+
+/* ---- an assumed form, shown beside the character rather than replacing it ---- */
+.card.wildshape {
+  border-color: var(--green, #5d8f52);
+  box-shadow: inset 0 0 0 1px rgba(93, 143, 82, .18);
+}
+.card.wildshape h3 { color: var(--green, #8ec97f); }
