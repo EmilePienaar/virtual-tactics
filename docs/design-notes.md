@@ -807,6 +807,24 @@ from here. That is the right trade: the sheet marks everything it inferred with
 **read from text**, so a player knows which numbers to glance at, and an action
 it declined to guess at is one they were always going to read anyway.
 
+A third shape was added later: healing. It is narrower than the other two,
+because "hit points" appears in half the features in the game - the die has to
+sit directly against the words that spend it. That is what turns the Stars
+druid's Chalice into a rollable heal.
+
+Two phrasings were costing more than they looked. The books say "targets one
+creature **within** 60 feet" far more often than "a range of 30 feet", and
+"1d8 **+ your** Wisdom modifier" as often as "you **add your** Dexterity
+modifier". Missing either silently dropped every feature written that way,
+Circle of the Stars' Archer among them.
+
+**Later features that improve earlier ones** are read too, from one sentence
+shape: "The {@damage 1d8} of the Archer and the Chalice becomes {@damage 2d8}"
+names the features, the die it replaces, and the replacement. Without it a
+10th-level Stars druid is shown 1d8 for an attack that has dealt 2d8 since they
+levelled - the sheet being confidently out of date, which is the failure this
+whole file exists to avoid.
+
 Save DCs follow the same discipline. Most features name one ("against your spell
 save DC"); a few lean on a class DC the table already set, so the monk's Ki save
 DC is supplied and everything else abstains rather than inventing a number.

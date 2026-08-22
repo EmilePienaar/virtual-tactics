@@ -421,6 +421,26 @@
       actor.actions.push(act);
     });
 
+    /* A later feature may improve an earlier one's die - the Stars druid's
+       Twinkling Constellations does exactly this to the Archer and the Chalice.
+       Applied after every action exists, so order in the feature list does not
+       matter. */
+    if (VT.featureText && VT.featureText.upgrades) {
+      (actor.features || []).forEach(function (f) {
+        var rec = (VT.charbuild && VT.charbuild.featureRecord)
+          ? VT.charbuild.featureRecord(f, f.className || className) : null;
+        if (!rec) return;
+        VT.featureText.upgrades(VT.featureText.textOf(rec)).forEach(function (up) {
+          featureActions.forEach(function (act) {
+            if (VT.featureText.applyUpgrade(act, up)) {
+              notes[f.name] = notes[f.name] ||
+                ('Upgraded ' + act.name + ' to ' + up.to + '.');
+            }
+          });
+        });
+      });
+    }
+
     actor.featureNotes = notes;
     actor.derivedActionCount = derivedCount;
     actor.expertise = (choices.expertise || actor.expertise || [])

@@ -132,17 +132,24 @@
     return new RegExp('\\b' + t0 + '\\s+damage\\b', 'i').test(text) ? t0 : null;
   }
 
-  /* "you add your Dexterity modifier to its attack and damage rolls" */
+  /* Which ability feeds the roll. Both phrasings are common and mean the same
+     thing - "you add your Dexterity modifier to its attack and damage rolls",
+     and "radiant damage equal to 1d8 + your Wisdom modifier". */
   function statedAbility(text) {
-    var m = text.match(/add your ([A-Za-z]+) modifier/i);
+    var m = text.match(/add your ([A-Za-z]+) modifier/i)
+         || text.match(/\+\s*your ([A-Za-z]+) modifier/i);
     if (m && ABILITY_WORD[m[1].toLowerCase()]) return ABILITY_WORD[m[1].toLowerCase()];
     return null;
   }
 
+  /* How far it reaches. "a range of 30 feet" is the formal phrasing; "targets
+     one creature within 60 feet of you" is the one the books actually use most
+     of the time, and missing it was silently costing every feature written that
+     way - the Circle of the Stars Archer among them. */
   function statedRange(text) {
-    var m = text.match(/range of (\d+)\s*(?:feet|ft)/i);
-    if (m) return parseInt(m[1], 10);
-    return null;
+    var m = text.match(/range of (\d+)\s*(?:feet|ft)/i)
+         || text.match(/within (\d+)\s*(?:feet|ft)/i);
+    return m ? parseInt(m[1], 10) : null;
   }
 
   function statedReach(text) {
@@ -234,6 +241,32 @@
     };
   }
 
+  /* Healing. Narrower than the other two on purpose: the die has to sit
+     directly against the words that spend it, because "hit points" appears in
+     half the features in the game and a feature that merely mentions them is
+     not a heal. */
+  function asHeal(feature, ctx, text) {
+    var m = text.match(/(?:regains?|restores?)\s+(?:a number of\s+)?(?:hit points|Hit Points)[^.]{0,30}?equal to[^.]{0,20}?(\d*d\d+)/i);
+    if (!m) return null;
+    var die = normaliseDie(m[1]);
+    if (!die) return null;
+
+    var ability = statedAbility(text);
+    var abilityMod = ability ? SRD.mod((ctx.abilities || {})[ability] || 10) : 0;
+
+    return {
+      name: feature.name,
+      kind: 'heal',
+      dmg: die + (abilityMod ? U.sign(abilityMod) : ''),
+      range: [0, statedRange(text) || 0],
+      cost: 'action',
+      fromFeature: true,
+      derived: true,
+      desc: 'Read from the feature text: restores ' + die +
+            (ability ? ' + ' + ability.toUpperCase() : '') + ' hit points.'
+    };
+  }
+
   /* One feature in, zero or one action out. */
   /* A die that feeds temporary hit points, healing, or a table roll is not
      damage. When the only die in the text is spoken for like that, there is
@@ -260,7 +293,8 @@
     if (!text) return null;
     if (text.length > CONTAINER_CHARS) return null;
     ctx = ctx || {};
-    var act = asAttack(feature, ctx, text) || asSave(feature, ctx, text);
+    var act = asAttack(feature, ctx, text) || asSave(feature, ctx, text) ||
+              asHeal(feature, ctx, text);
     if (!act) return null;
     if (dieIsNotDamage(text, (act.dmg || '').match(/\d*d\d+/) && (act.dmg.match(/\d*d\d+/) || [])[0])) {
       return null;
@@ -268,8 +302,45 @@
     return act;
   }
 
+  /* Later features that improve earlier ones.
+
+     "The {@damage 1d8} of the Archer and the Chalice becomes {@damage 2d8}" is
+     a whole sentence naming the features it upgrades, the die it replaces and
+     the die it replaces it with. That is enough to apply without guessing, and
+     without it a 10th-level Stars druid is shown 1d8 for an attack that has
+     dealt 2d8 since they levelled - the sheet being confidently out of date,
+     which is the failure mode this whole file exists to avoid.
+
+     Only this one sentence shape is read. Anything vaguer is left alone. */
+  function upgrades(text) {
+    var out = [];
+    var re = /the \{@(?:damage|dice)\s+([^}|]+)\}[^.]{0,80}?\bof the ([^.]{0,80}?)\bbecomes \{@(?:damage|dice)\s+([^}|]+)\}/gi;
+    var m;
+    while ((m = re.exec(text)) !== null) {
+      var names = m[2].split(/\s*(?:,|and)\s*/i)
+        .map(function (n) { return n.replace(/^the\s+/i, '').trim(); })
+        .filter(Boolean);
+      if (!names.length) continue;
+      out.push({ names: names, from: normaliseDie(m[1]), to: normaliseDie(m[3]) });
+    }
+    return out;
+  }
+
+  /* Rewrite an action's die in place when an upgrade names it. */
+  function applyUpgrade(act, up) {
+    if (!act || !up || !up.from || !up.to) return false;
+    var named = up.names.some(function (n) {
+      return String(act.name).toLowerCase() === n.toLowerCase();
+    });
+    if (!named) return false;
+    if (String(act.dmg).indexOf(up.from) !== 0) return false;
+    act.dmg = up.to + String(act.dmg).slice(up.from.length);
+    return true;
+  }
+
   VT.featureText = {
     toAction: toAction,
+    upgrades: upgrades, applyUpgrade: applyUpgrade,
     textOf: textOf,
     /* exposed for the tests that keep this honest */
     firstDie: firstDie, damageType: damageType, statedAbility: statedAbility
