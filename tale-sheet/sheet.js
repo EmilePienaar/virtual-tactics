@@ -620,11 +620,12 @@
     var book = spellbookCard(a, spells);
     if (book) view.appendChild(book);
 
-    /* the ranger's animal, same shape as wild shape below it */
+    /* anything a spell has put on the board */
+    (summonCards(a) || []).forEach(function (cd) { view.appendChild(cd); });
+
+    /* the ranger's animal - one card, whether picking or playing */
     var compCard = companionCard(a);
     if (compCard) view.appendChild(compCard);
-    var compPanel = companionPanel(a);
-    if (compPanel) view.appendChild(compPanel);
 
     /* wild shape: the picker, then the active form's own stat block */
     var wsCard = wildShapeCard(a);
@@ -1111,15 +1112,221 @@
      stat block beside the sheet, so changing which animal it is replaces one
      object and nothing about the ranger is touched. */
 
+  /* ---- summoned creatures -------------------------------------------------
+
+     A summon is the same idea as a companion with two extra questions: what
+     level was it cast at, and which shape did you pick. Both change the block,
+     so both live on it and changing either rebuilds it. */
+
+  function summonCards(a) {
+    if (!VT.summon || !FT.loaded) return [];
+    var out = [];
+
+    /* what is already on the board */
+    (a.summons || []).forEach(function (sm, i) {
+      out.push(summonPanel(a, sm, i));
+    });
+
+    /* what could be */
+    var can = VT.summon.available(a);
+    if (!can.length) return out;
+
+    var card = el('div', { class: 'card' }, [el('h3', {}, ['Summons'])]);
+    can.forEach(function (opt) {
+      card.appendChild(el('div', { class: 'rollrow' }, [
+        el('span', { class: 'lbl' }, [
+          opt.spell,
+          el('span', { class: 'sub' }, ['  ' + opt.mon.name +
+            '  · cast at ' + U.ord(opt.minLevel) + ' or higher'])
+        ]),
+        el('button', { class: 'btn sm primary', onClick: function () {
+          var forms = VT.summon.forms(opt.mon);
+          a.summons = a.summons || [];
+          a.summons.push(VT.summon.conjure(opt.mon, opt.minLevel,
+            forms.length ? forms[0] : null, a));
+          /* remember what it came from so the level and form can be changed */
+          a.summons[a.summons.length - 1].from = opt.mon.name;
+          a.summons[a.summons.length - 1].fromSource = opt.mon.source;
+          a.summons[a.summons.length - 1].minLevel = opt.minLevel;
+          save(); render();
+          toast(opt.spell + ' cast', 'ok');
+        } }, ['Summon'])
+      ]));
+    });
+    card.appendChild(el('p', { class: 'muted' }, [
+      'Casting here does not spend a slot - do that on the spell itself. This ' +
+      'puts the creature\u2019s stat block on your sheet.'
+    ]));
+    out.push(card);
+    return out;
+  }
+
+  function summonMon(sm) {
+    return (FT.get('creature') || []).find(function (m) {
+      return m.name === sm.from && (!sm.fromSource || m.source === sm.fromSource);
+    });
+  }
+
+  function summonPanel(a, sm, index) {
+    var card = el('div', { class: 'card wildshape' }, [
+      el('h3', {}, [sm.name + '  ·  ' + U.ord(sm.level) + ' level'])
+    ]);
+
+    card.appendChild(el('div', { class: 'bigstats' }, [
+      stat('AC', sm.ac), stat('HP', sm.hp + '/' + sm.hpMax),
+      stat('SPD', sm.speed), stat('STR', sm.abilities ? sm.abilities.str : '\u2014')
+    ]));
+
+    var frac = U.clamp(sm.hp / Math.max(1, sm.hpMax), 0, 1);
+    card.appendChild(el('div', { class: 'hpbar' }, [
+      el('i', { style: { width: (frac * 100) + '%',
+        background: frac > .5 ? 'linear-gradient(180deg,#8ec97f,#5d8f52)'
+                  : frac > .25 ? 'linear-gradient(180deg,#e0c46a,#a8873c)'
+                  : 'linear-gradient(180deg,#d97b74,#8f4640)' } }),
+      el('span', {}, [sm.hp + ' / ' + sm.hpMax])
+    ]));
+
+    var amount = 5;
+    card.appendChild(el('div', { class: 'hpctl' }, [
+      el('button', { class: 'btn sm danger', onClick: function () {
+        sm.hp = Math.max(0, sm.hp - amount); save(); render();
+      } }, ['− Damage']),
+      el('input', { type: 'number', value: 5, min: 0,
+        onInput: function (e) { amount = Math.max(0, parseInt(e.target.value, 10) || 0); } }),
+      el('button', { class: 'btn sm', onClick: function () {
+        sm.hp = Math.min(sm.hpMax, sm.hp + amount); save(); render();
+      } }, ['+ Heal'])
+    ]));
+
+    var mon = summonMon(sm);
+
+    /* the two things that change the block */
+    if (mon) {
+      var formList = VT.summon.forms(mon);
+      if (formList.length) {
+        var frow = el('div', { class: 'btnrow' });
+        formList.forEach(function (f) {
+          frow.appendChild(el('button', {
+            class: 'btn sm' + (String(sm.form).toLowerCase() === f.toLowerCase() ? ' on' : ''),
+            onClick: function () { reconjure(a, sm, index, sm.level, f); }
+          }, [f]));
+        });
+        card.appendChild(el('div', { class: 'row' }, [
+          el('label', {}, ['Shape']), frow
+        ]));
+      }
+
+      var lrow = el('div', { class: 'btnrow' });
+      for (var lv = sm.minLevel || sm.level; lv <= 9; lv++) {
+        (function (n) {
+          lrow.appendChild(el('button', {
+            class: 'btn sm' + (n === sm.level ? ' on' : ''),
+            onClick: function () { reconjure(a, sm, index, n, sm.form); }
+          }, [String(n)]));
+        })(lv);
+      }
+      card.appendChild(el('div', { class: 'row' }, [
+        el('label', {}, ['Cast at']), lrow
+      ]));
+    }
+
+    (sm.warnings || []).forEach(function (w) {
+      card.appendChild(el('div', { class: 'warn' }, [w]));
+    });
+
+    (sm.actions || []).forEach(function (act) { card.appendChild(actionRow(a, act)); });
+
+    if ((sm.traits || []).length) {
+      card.appendChild(el('div', { class: 'muted', style: { marginTop: '6px' } }, [
+        sm.traits.join('  ·  ')
+      ]));
+    }
+    var extra = Object.keys(sm.speeds || {}).filter(function (k) { return k !== 'walk'; });
+    if (extra.length) {
+      card.appendChild(el('div', { class: 'muted' }, [
+        extra.map(function (k) { return k + ' ' + sm.speeds[k] + ' ft'; }).join(', ')
+      ]));
+    }
+
+    card.appendChild(el('div', { class: 'btnrow', style: { marginTop: '8px' } }, [
+      el('button', { class: 'btn sm danger', onClick: function () {
+        a.summons.splice(index, 1); save(); render();
+      } }, ['Dismiss'])
+    ]));
+    return card;
+  }
+
+  /* Rebuild in place, keeping damage already taken where it still fits. */
+  function reconjure(a, sm, index, level, form) {
+    var mon = summonMon(sm);
+    if (!mon) return;
+    var hurt = Math.max(0, sm.hpMax - sm.hp);
+    var next = VT.summon.conjure(mon, level, form, a);
+    next.from = sm.from; next.fromSource = sm.fromSource; next.minLevel = sm.minLevel;
+    next.hp = Math.max(1, next.hpMax - hurt);
+    a.summons[index] = next;
+    save(); render();
+  }
+
   function companionCard(a) {
     if (!VT.companion || !VT.companion.kind(a)) return null;
-    var card = el('div', { class: 'card' }, [el('h3', {}, ['Companion'])]);
+    var c = a.companion;
 
-    if (a.companion) {
-      card.appendChild(el('div', { class: 'ok' }, [
-        a.companion.name + ' is with you. Its stat block is below.'
+    /* One card, not two. A picker card sitting above a stat block card left the
+       ranger with two half-empty panels saying related things; the animal is
+       one subject and reads as one. */
+    var card = el('div', { class: 'card' + (c ? ' wildshape' : '') }, [
+      el('h3', {}, [c
+        ? c.name + '  ·  ' + (c.size || '') +
+          (c.scaling ? '  ·  scales with you' : '')
+        : 'Companion'])
+    ]);
+
+    if (c) {
+      card.appendChild(el('div', { class: 'bigstats' }, [
+        stat('AC', c.ac), stat('HP', c.hp + '/' + c.hpMax),
+        stat('SPD', c.speed), stat('STR', c.abilities ? c.abilities.str : '\u2014')
       ]));
-      card.appendChild(el('div', { class: 'btnrow' }, [
+
+      var frac = U.clamp(c.hp / Math.max(1, c.hpMax), 0, 1);
+      card.appendChild(el('div', { class: 'hpbar' }, [
+        el('i', { style: { width: (frac * 100) + '%',
+          background: frac > .5 ? 'linear-gradient(180deg,#8ec97f,#5d8f52)'
+                    : frac > .25 ? 'linear-gradient(180deg,#e0c46a,#a8873c)'
+                    : 'linear-gradient(180deg,#d97b74,#8f4640)' } }),
+        el('span', {}, [c.hp + ' / ' + c.hpMax])
+      ]));
+
+      var amount = 5;
+      card.appendChild(el('div', { class: 'hpctl' }, [
+        el('button', { class: 'btn sm danger', onClick: function () {
+          c.hp = Math.max(0, c.hp - amount); save(); render();
+        } }, ['− Damage']),
+        el('input', { type: 'number', value: 5, min: 0,
+          onInput: function (e) { amount = Math.max(0, parseInt(e.target.value, 10) || 0); } }),
+        el('button', { class: 'btn sm', onClick: function () {
+          c.hp = Math.min(c.hpMax, c.hp + amount); save(); render();
+        } }, ['+ Heal'])
+      ]));
+
+      (c.warnings || []).forEach(function (w) {
+        card.appendChild(el('div', { class: 'warn' }, [w]));
+      });
+
+      (c.actions || []).forEach(function (act) { card.appendChild(actionRow(a, act)); });
+
+      if (c.scaling) {
+        card.appendChild(el('div', { class: 'muted', style: { marginTop: '6px' } }, [
+          'AC, hit points and attacks come from your ranger level (' + c.ownerLevel +
+          '). Re-take it after levelling to bring the numbers up.'
+        ]));
+      }
+      if (c.senses) card.appendChild(el('div', { class: 'muted' }, ['Senses: ' + c.senses]));
+      if (c.notes) {
+        card.appendChild(el('p', { class: 'muted', style: { whiteSpace: 'pre-wrap' } }, [c.notes]));
+      }
+
+      card.appendChild(el('div', { class: 'btnrow', style: { marginTop: '8px' } }, [
         el('button', { class: 'btn sm', onClick: function () {
           a.companionPicking = !a.companionPicking; save(); render();
         } }, [a.companionPicking ? 'Never mind' : 'Change animal']),
@@ -1127,7 +1334,11 @@
           a.companion = null; a.companionPicking = false; save(); render();
         } }, ['Dismiss'])
       ]));
+
       if (!a.companionPicking) return card;
+      card.appendChild(el('div', { class: 'muted', style: { marginTop: '8px' } }, [
+        'Choosing a different animal replaces this one.'
+      ]));
     }
 
     if (!FT.loaded) {
@@ -1148,7 +1359,7 @@
         el('span', { class: 'lbl' }, [g.group])
       ]));
       /* The 2014 list is every small beast in the books, so it gets a search
-         rather than four hundred rows. The Primal ones are three. */
+         rather than a hundred rows. The Primal ones are three. */
       if (g.list.length > 12) {
         var q = '';
         var box = el('div', { class: 'goods', style: { maxHeight: '170px', overflowY: 'auto' } });
@@ -1176,7 +1387,8 @@
       el('span', { class: 'lbl' }, [
         mon.name,
         el('span', { class: 'sub' }, ['  ' + (mon.source || '') +
-          (VT.convert.crOf(mon) != null ? '  · CR ' + VT.wildshape.crLabel(VT.convert.crOf(mon)) : '')])
+          (VT.convert.crOf(mon) != null
+            ? '  · CR ' + VT.wildshape.crLabel(VT.convert.crOf(mon)) : '')])
       ]),
       el('button', { class: 'btn sm primary', onClick: function () {
         a.companion = VT.companion.assume(mon, a);
@@ -1185,64 +1397,6 @@
         toast(mon.name + ' joins you', 'ok');
       } }, ['Take'])
     ]);
-  }
-
-  /* The animal's own stat block, with its own hit points. */
-  function companionPanel(a) {
-    var c = a.companion;
-    if (!c) return null;
-
-    var card = el('div', { class: 'card wildshape' }, [
-      el('h3', {}, [c.name + '  ·  ' + (c.size || '') +
-        (c.scaling ? '  ·  scales with your level' : '')])
-    ]);
-
-    card.appendChild(el('div', { class: 'bigstats' }, [
-      stat('AC', c.ac), stat('HP', c.hp + '/' + c.hpMax),
-      stat('SPD', c.speed), stat('STR', c.abilities ? c.abilities.str : '\u2014')
-    ]));
-
-    var frac = U.clamp(c.hp / Math.max(1, c.hpMax), 0, 1);
-    card.appendChild(el('div', { class: 'hpbar' }, [
-      el('i', { style: { width: (frac * 100) + '%',
-        background: frac > .5 ? 'linear-gradient(180deg,#8ec97f,#5d8f52)'
-                  : frac > .25 ? 'linear-gradient(180deg,#e0c46a,#a8873c)'
-                  : 'linear-gradient(180deg,#d97b74,#8f4640)' } }),
-      el('span', {}, [c.hp + ' / ' + c.hpMax])
-    ]));
-
-    var amount = 5;
-    card.appendChild(el('div', { class: 'hpctl' }, [
-      el('button', { class: 'btn sm danger', onClick: function () {
-        c.hp = Math.max(0, c.hp - amount); save(); render();
-      } }, ['− Damage']),
-      el('input', { type: 'number', value: 5, min: 0,
-        onInput: function (e) { amount = Math.max(0, parseInt(e.target.value, 10) || 0); } }),
-      el('button', { class: 'btn sm', onClick: function () {
-        c.hp = Math.min(c.hpMax, c.hp + amount); save(); render();
-      } }, ['+ Heal'])
-    ]));
-
-    (c.warnings || []).forEach(function (w) {
-      card.appendChild(el('div', { class: 'warn' }, [w]));
-    });
-
-    if (c.scaling) {
-      card.appendChild(el('div', { class: 'muted', style: { marginTop: '6px' } }, [
-        'AC and hit points are worked out from your ranger level (' + c.ownerLevel +
-        ') and proficiency bonus, and its attacks use your proficiency. ' +
-        'Re-take it after levelling to bring the numbers up.'
-      ]));
-    }
-    if (c.senses) {
-      card.appendChild(el('div', { class: 'muted' }, ['Senses: ' + c.senses]));
-    }
-
-    (c.actions || []).forEach(function (act) { card.appendChild(actionRow(a, act)); });
-    if (c.notes) {
-      card.appendChild(el('p', { class: 'muted', style: { whiteSpace: 'pre-wrap' } }, [c.notes]));
-    }
-    return card;
   }
 
   /* ---- wild shape --------------------------------------------------------
@@ -2335,18 +2489,58 @@
       add.appendChild(addPicker('Weapon', weapons, function (rec) { addToBuild(a, 'weapons', rec); }));
       add.appendChild(addPicker('Spell', spells, function (rec) { addToBuild(a, 'spells', rec); },
         function (s) { return s.name + (s.level ? ' (' + s.level + ')' : ' (C)'); }));
+      /* Armour goes into the pack like everything else. It used to jump
+         straight onto the character with nothing in the inventory to show for
+         it, which meant it could be swapped but never simply carried. */
       add.appendChild(addPicker('Armour', armours, function (rec) {
-        a.build.armor = { name: rec.name, source: rec.source || null };
-        rederive(a, 'Equipped ' + rec.name);
+        VT.gear.add(a, rec, { equipped: true });
+        save();
+        toast('Wearing ' + rec.name, 'ok');
+        render();
       }));
+
+      /* Magic items: anything with a rarity. Attunement is recorded as a note
+         so the attunement card can see it. */
+      var magic = FT.get('item').filter(function (i) {
+        return i.rarity && i.rarity !== 'none' && i.rarity !== 'unknown';
+      });
+      add.appendChild(addPicker('Magic item', magic, function (rec) {
+        var entry = VT.gear.add(a, rec, { note: rec.reqAttune ? 'requires attunement' : '' });
+        entry.rarity = rec.rarity || null;
+        save();
+        toast('Added ' + rec.name, 'ok');
+        render();
+      }, function (i) { return i.name + (i.rarity ? '  (' + i.rarity + ')' : ''); }));
+
+      /* Tools: owning one and being proficient with it are different things,
+         and only the second makes it rollable, so do both. */
+      var TOOLKINDS = ['AT', 'T', 'GS', 'INS'];
+      var tools = FT.get('item').filter(function (i) {
+        return TOOLKINDS.indexOf(String(i.type || '').split('|')[0]) >= 0;
+      });
+      add.appendChild(addPicker('Tool', tools, function (rec) {
+        VT.gear.add(a, rec, {});
+        var key = String(rec.name).toLowerCase();
+        a.toolProf = a.toolProf || [];
+        var already = a.toolProf.some(function (t) { return String(t).toLowerCase() === key; });
+        if (!already) a.toolProf.push(rec.name);
+        if (a.build) a.build.toolProf = a.toolProf.slice();
+        save();
+        toast(already ? 'Added ' + rec.name
+                      : 'Added ' + rec.name + ' and proficiency with it', 'ok');
+        render();
+      }));
+
       add.appendChild(el('div', { class: 'btnrow' }, [
-        el('button', { class: 'btn sm' + (a.build.shield ? ' on' : ''), onClick: function () {
-          a.build.shield = !a.build.shield;
-          rederive(a, a.build.shield ? 'Shield equipped' : 'Shield removed');
-        } }, ['Shield +2 AC']),
-        a.build.armor ? el('button', { class: 'btn sm danger', onClick: function () {
-          a.build.armor = null; rederive(a, 'Armour removed');
-        } }, ['Remove armour']) : null
+        el('button', { class: 'btn sm' + (VT.gear.shield(a) ? ' on' : ''), onClick: function () {
+          var have = VT.gear.shield(a);
+          if (have) VT.gear.unequip(a, have);
+          else VT.gear.add(a, { name: 'Shield', type: 'S', ac: 2 }, { equipped: true });
+          save(); render();
+        } }, ['Shield +2 AC'])
+      ]));
+      add.appendChild(el('p', { class: 'muted' }, [
+        'Everything lands in your inventory. Wear and remove it on the Sheet tab.'
       ]));
       view.appendChild(add);
     } else if (!FT.loaded) {

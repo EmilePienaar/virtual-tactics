@@ -101,6 +101,10 @@ Day to day:
   put it back without losing it. Heavy and medium armour give disadvantage on
   Stealth, armour you lack the Strength for costs 10 feet, and both stop a
   monk's Unarmored Movement and a barbarian's Fast Movement.
+- **Summoning spells put the creature on your sheet.** Cast Summon Beast and
+  its stat block appears with buttons for the shape (Land, Water, Air) and the
+  slot level — both rebuild the block, so AC, hit points, speeds, traits and
+  attacks all follow. One implementation covers all two dozen summon spells.
 - **The ranger's companion** works like Wild Shape: pick the animal and its stat
   block appears below yours with its own hit points. Beast Master gets both the
   Primal Companions and the 2014 beast list; Drakewarden gets the drake. The

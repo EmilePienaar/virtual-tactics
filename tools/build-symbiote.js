@@ -31,6 +31,7 @@ const ENGINE = [
   'src/data/featuretext.js',
   'src/data/wildshape.js',
   'src/data/companion.js',
+  'src/data/summon.js',
   'src/data/shops.js',
   'src/data/loot.js',
   'src/data/choices.js',
