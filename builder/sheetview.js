@@ -318,7 +318,7 @@
        slots now sit inside the spell list, so there is nothing else left for a
        magic section to hold. */
     { key: 'spells', label: 'Spells',
-      match: /^(spells|spell slots|pact magic)/i },
+      match: /^(spells|spell slots|pact magic|summons)/i },
     { key: 'gear',  label: 'Gear',
       match: /^(coin|inventory|equipment|attunement|collect from)/i },
     { key: 'about', label: 'Character',
@@ -345,6 +345,7 @@
     /* An assumed form or a companion is titled with the creature's name, which
        no heading rule can match - "Brown Bear" and "Beast of the Land" are not
        words this file can know. They carry a class instead, which is stable. */
+    if (card.classList && card.classList.contains('summoned')) return 'spells';
     if (card.classList && card.classList.contains('wildshape')) return 'play';
     var h = headingOf(card);
     for (var i = 0; i < GROUPS.length; i++) {

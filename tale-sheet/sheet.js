@@ -620,7 +620,9 @@
     var book = spellbookCard(a, spells);
     if (book) view.appendChild(book);
 
-    /* anything a spell has put on the board */
+    /* Anything a spell has put on the board goes with the spells, not among
+       the class features - a summon is something you cast, and looking for it
+       anywhere else is looking in the wrong place. */
     (summonCards(a) || []).forEach(function (cd) { view.appendChild(cd); });
 
     /* the ranger's animal - one card, whether picking or playing */
@@ -918,22 +920,44 @@
           item && item.note ? el('span', { class: 'sub' }, ['  ' + item.note]) : null
         ]),
         item ? el('button', { class: 'btn sm danger', onClick: (function (nm) {
-          return function () { VT.actor.unattune(a, nm); toast('Attunement broken'); save(); render(); };
+          return function () {
+            VT.actor.unattune(a, nm);
+            VT.gear.recompute(a);
+            toast('Attunement broken'); save(); render();
+          };
         })(item.name) }, ['×']) : null
       ]));
     }
-    if (FT.loaded) {
-      atCard.appendChild(addPicker('Attune', FT.get('item').filter(function (i) { return i.reqAttune; }),
-        function (rec) {
-          var r = VT.actor.attune(a, rec);
-          if (!r.ok) { toast(r.reason, 'err'); return; }
-          if (!(a.inventory || []).some(function (x) { return x.name === rec.name; })) {
-            a.inventory.push({ name: rec.name, qty: 1, note: 'attuned' });
-          }
-          toast('Attuned to ' + rec.name, 'ok');
-          save(); render();
-        },
-        function (i) { return i.name + (typeof i.reqAttune === 'string' ? ' (' + i.reqAttune + ')' : ''); }));
+    /* Attune to what you are carrying, not to anything in the books. You
+       cannot attune to an item you do not own, and offering several thousand of
+       them made the one you do own hard to find. */
+    var attunable = (a.inventory || []).filter(function (e) {
+      return e.fx && e.fx.needsAttune &&
+        !(a.attuned || []).some(function (x) {
+          return String(x.name).toLowerCase() === String(e.name).toLowerCase();
+        });
+    });
+    if (attunable.length) {
+      atCard.appendChild(el('div', { class: 'muted', style: { marginTop: '6px' } }, ['In your pack']));
+      attunable.forEach(function (e) {
+        atCard.appendChild(el('div', { class: 'rollrow' }, [
+          el('span', { class: 'lbl' }, [
+            e.name,
+            el('span', { class: 'sub' }, ['  ' + VT.itemfx.describe(e.fx)])
+          ]),
+          el('button', { class: 'btn sm primary', onClick: function () {
+            var r = VT.actor.attune(a, { name: e.name });
+            if (!r.ok) { toast(r.reason, 'err'); return; }
+            VT.gear.recompute(a);
+            toast('Attuned to ' + e.name, 'ok');
+            save(); render();
+          } }, ['Attune'])
+        ]));
+      });
+    } else {
+      atCard.appendChild(el('p', { class: 'muted' }, [
+        'Nothing in your pack needs attunement. Add magic items on the Edit tab.'
+      ]));
     }
     view.appendChild(atCard);
 
@@ -1168,7 +1192,7 @@
   }
 
   function summonPanel(a, sm, index) {
-    var card = el('div', { class: 'card wildshape' }, [
+    var card = el('div', { class: 'card wildshape summoned' }, [
       el('h3', {}, [sm.name + '  ·  ' + U.ord(sm.level) + ' level'])
     ]);
 
@@ -1602,7 +1626,9 @@
 
     wearable.forEach(function (e) {
       var g = e.gear;
-      var what = g.slot === 'armor'
+      var fxText = e.fx ? VT.itemfx.describe(e.fx) : '';
+      var what = g.slot === 'trinket' ? (fxText || 'wondrous item')
+        : g.slot === 'armor'
         ? (g.weight + ' armour · AC ' + g.ac +
            (g.stealth ? ' · stealth disadvantage' : '') +
            (g.strength ? ' · needs STR ' + g.strength : ''))

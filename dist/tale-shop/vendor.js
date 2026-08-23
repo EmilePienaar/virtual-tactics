@@ -1293,11 +1293,18 @@
   }
 
   /* Which slot an item occupies, or null if it is not something you wear. */
+  /* Armour and shields are exclusive - one each. Weapons and trinkets are not:
+     you can hold two weapons and wear several rings, and pretending otherwise
+     would be a rule the books do not have. */
+  var EXCLUSIVE = { armor: 1, shield: 1 };
+
   function slotOf(item) {
     var t = baseType(item);
     if (ARMOUR[t]) return 'armor';
     if (t === 'S') return 'shield';
     if (item && (item.weaponCategory || t === 'M' || t === 'R')) return 'weapon';
+    /* anything with a mechanical effect is worth being able to put on */
+    if (VT.itemfx && VT.itemfx.effectsOf(item)) return 'trinket';
     return null;
   }
 
@@ -1337,11 +1344,13 @@
      breastplates, and a sheet that lets you is worse than one that does not. */
   function equip(actor, entry) {
     if (!entry || !entry.gear) return false;
-    entries(actor).forEach(function (e) {
-      if (e !== entry && e.equipped && e.gear && e.gear.slot === entry.gear.slot) {
-        e.equipped = false;
-      }
-    });
+    if (EXCLUSIVE[entry.gear.slot]) {
+      entries(actor).forEach(function (e) {
+        if (e !== entry && e.equipped && e.gear && e.gear.slot === entry.gear.slot) {
+          e.equipped = false;
+        }
+      });
+    }
     entry.equipped = true;
     recompute(actor);
     return true;
@@ -1390,6 +1399,11 @@
      equip or unequip, and by derive() once the inventory exists. */
   function recompute(actor) {
     if (!actor) return actor;
+
+    /* Ability scores first: an item that sets Dexterity changes the armour
+       class that is about to be worked out from it, so the order matters. */
+    if (VT.itemfx) VT.itemfx.applyAbilities(actor);
+
     var arm = armour(actor), shd = shield(actor);
     var dex = SRD.mod((actor.abilities && actor.abilities.dex) || 10);
 
@@ -1422,6 +1436,9 @@
        have to be reconsidered every time it changes. apply() carries spent
        resources forward, so re-running it costs nothing but the recalculation. */
     if (VT.features && VT.features.apply) VT.features.apply(actor);
+
+    /* Everything else items do stacks on top of the armour and the features. */
+    if (VT.itemfx) VT.itemfx.applyRest(actor);
     return actor;
   }
 
@@ -1437,6 +1454,7 @@
       gear: g || undefined,
       equipped: g ? !!opts.equipped : undefined
     };
+    if (VT.itemfx) VT.itemfx.tag(entry, item);
     actor.inventory.push(entry);
     if (entry.equipped) equip(actor, entry);
     return entry;
@@ -1449,6 +1467,175 @@
     recompute: recompute,
     stealthDisadvantage: stealthDisadvantage, speedPenalty: speedPenalty,
     wearingArmour: wearingArmour, wearingHeavy: wearingHeavy, wearingShield: wearingShield
+  };
+})();
+
+/* ===== src/rules/itemfx.js ===== */
+/* Virtual Tactics :: rules/itemfx.js
+   What a magic item actually does to you.
+
+   Until now an attuned Belt of Hill Giant Strength was a line in a list. It did
+   not touch Strength, which is the entire item. Same for a Ring of Protection
+   and its +1, a Ring of Fire Resistance and its resistance, Boots of Speed and
+   their doubled movement.
+
+   The data carries all of it in structured fields, so this reads rather than
+   guesses:
+
+     ability:      { static: { str: 21 } }      74 items
+     bonusAc:      "+1"                        267 items
+     resist:       ["fire"]                    361 items
+     modifySpeed:  { multiply: { walk: 2 } }   121 items
+     bonusSavingThrow, conditionImmune, bonusSpellAttack, bonusSpellSaveDc
+
+   When an item counts is the other half of the question. An item that requires
+   attunement does nothing until attuned - that is what attunement is for.
+   Anything else has to be worn. Carrying a ring in your pack has never made
+   anyone tougher. */
+(function () {
+  'use strict';
+  var VT = window.VT, U = VT.util, SRD = VT.srd;
+
+  function num(v) {
+    if (v == null) return 0;
+    var n = parseInt(String(v).replace(/[^-\d]/g, ''), 10);
+    return isNaN(n) ? 0 : n;
+  }
+
+  /* The compact record kept on an inventory entry, or null for a mundane item.
+     A copy rather than the whole record: this is saved with the character. */
+  function effectsOf(item) {
+    if (!item) return null;
+    var fx = {};
+    if (item.ability && item.ability.static) fx.set = U.clone(item.ability.static);
+    if (item.bonusAc) fx.ac = num(item.bonusAc);
+    if (item.bonusSavingThrow) fx.save = num(item.bonusSavingThrow);
+    if (item.bonusSpellAttack) fx.spellAttack = num(item.bonusSpellAttack);
+    if (item.bonusSpellSaveDc) fx.spellDc = num(item.bonusSpellSaveDc);
+    if (item.resist) fx.resist = [].concat(item.resist).filter(function (x) { return typeof x === 'string'; });
+    if (item.conditionImmune) {
+      fx.conditionImmune = [].concat(item.conditionImmune)
+        .filter(function (x) { return typeof x === 'string'; });
+    }
+    if (item.modifySpeed && item.modifySpeed.multiply) fx.speedMul = U.clone(item.modifySpeed.multiply);
+    if (item.modifySpeed && item.modifySpeed.bonus) fx.speedAdd = U.clone(item.modifySpeed.bonus);
+    if (item.reqAttune) fx.needsAttune = true;
+    /* Armour states its total AC already, so its own +1 must not be added on
+       top - "+1 Plate Armor" carries ac 19 AND bonusAc "+1", and counting both
+       gives 20. */
+    if (item.armor && item.ac) fx.acInArmour = true;
+    return Object.keys(fx).length ? fx : null;
+  }
+
+  /* Is this entry doing anything right now? */
+  function live(actor, entry) {
+    if (!entry || !entry.fx) return false;
+    if (entry.fx.needsAttune) {
+      return (actor.attuned || []).some(function (x) {
+        return String(x.name).toLowerCase() === String(entry.name).toLowerCase();
+      });
+    }
+    return !!entry.equipped;
+  }
+
+  function active(actor) {
+    return (actor.inventory || []).filter(function (e) { return live(actor, e); });
+  }
+
+  /* ---- applying ---------------------------------------------------------- */
+
+  /* Ability scores an item sets. The books say "your Strength score changes to
+     21", and every one of them adds "unless your Strength is already equal to
+     or greater" - so it is a floor, not an assignment. */
+  function applyAbilities(actor) {
+    if (!actor.baseAbilities) actor.baseAbilities = U.clone(actor.abilities || {});
+    var out = U.clone(actor.baseAbilities);
+    var from = {};
+    active(actor).forEach(function (e) {
+      var set = e.fx.set;
+      if (!set) return;
+      Object.keys(set).forEach(function (k) {
+        if ((out[k] || 0) < set[k]) { out[k] = set[k]; from[k] = e.name; }
+      });
+    });
+    actor.abilities = out;
+    actor.abilityFrom = from;
+    return actor;
+  }
+
+  /* Everything that is not an ability score. Called after AC has been worked
+     out from armour, because these stack on top of it. */
+  function applyRest(actor) {
+    var acBonus = 0, saveBonus = 0, spellAtk = 0, spellDc = 0;
+    var resist = [], condImm = [], notes = [];
+    var speedMul = 1, speedAdd = 0;
+
+    active(actor).forEach(function (e) {
+      var fx = e.fx;
+      /* worn armour already includes its own bonus in its AC */
+      if (fx.ac && !(fx.acInArmour && e.gear && e.gear.slot === 'armor')) acBonus += fx.ac;
+      if (fx.save) saveBonus += fx.save;
+      if (fx.spellAttack) spellAtk += fx.spellAttack;
+      if (fx.spellDc) spellDc += fx.spellDc;
+      (fx.resist || []).forEach(function (r) { if (resist.indexOf(r) < 0) resist.push(r); });
+      (fx.conditionImmune || []).forEach(function (r) { if (condImm.indexOf(r) < 0) condImm.push(r); });
+      if (fx.speedMul && fx.speedMul.walk) speedMul *= fx.speedMul.walk;
+      if (fx.speedAdd && fx.speedAdd.walk) speedAdd += fx.speedAdd.walk;
+      if (fx.ac || fx.save || fx.resist || fx.set || fx.speedMul) notes.push(e.name);
+    });
+
+    if (acBonus) {
+      actor.ac = (actor.ac || 10) + acBonus;
+      actor.acWhy = (actor.acWhy || '') + U.sign(acBonus) + ' from items';
+    }
+    actor.itemSaveBonus = saveBonus;
+    actor.itemSpellAttack = spellAtk;
+    actor.itemSpellDc = spellDc;
+    actor.resist = resist;
+    actor.conditionImmune = condImm;
+    actor.itemNotes = notes;
+
+    if (speedMul !== 1 || speedAdd) {
+      actor.speed = Math.round((actor.speed || 30) * speedMul) + speedAdd;
+    }
+    if (spellAtk && actor.spellAttack != null) actor.spellAttack += spellAtk;
+    if (spellDc && actor.spellDC != null) actor.spellDC += spellDc;
+    return actor;
+  }
+
+  /* Tag an inventory entry with its effects, if it has any. */
+  function tag(entry, item) {
+    var fx = effectsOf(item);
+    if (fx) entry.fx = fx;
+    return entry;
+  }
+
+  /* A plain-English summary, for the sheet to show under the item. */
+  function describe(fx) {
+    if (!fx) return '';
+    var bits = [];
+    if (fx.set) {
+      Object.keys(fx.set).forEach(function (k) {
+        bits.push((SRD.ABILITY_NAME[k] || k.toUpperCase()) + ' becomes ' + fx.set[k]);
+      });
+    }
+    if (fx.ac && !fx.acInArmour) bits.push(U.sign(fx.ac) + ' AC');
+    if (fx.save) bits.push(U.sign(fx.save) + ' to saves');
+    if (fx.spellAttack) bits.push(U.sign(fx.spellAttack) + ' spell attack');
+    if (fx.spellDc) bits.push(U.sign(fx.spellDc) + ' spell DC');
+    if (fx.resist && fx.resist.length) bits.push('resist ' + fx.resist.join(', '));
+    if (fx.conditionImmune && fx.conditionImmune.length) {
+      bits.push('immune to ' + fx.conditionImmune.join(', '));
+    }
+    if (fx.speedMul && fx.speedMul.walk) bits.push('speed x' + fx.speedMul.walk);
+    if (fx.speedAdd && fx.speedAdd.walk) bits.push(U.sign(fx.speedAdd.walk) + ' ft speed');
+    if (fx.needsAttune) bits.push('needs attunement');
+    return bits.join(' · ');
+  }
+
+  VT.itemfx = {
+    effectsOf: effectsOf, tag: tag, live: live, active: active,
+    applyAbilities: applyAbilities, applyRest: applyRest, describe: describe
   };
 })();
 
@@ -6197,7 +6384,7 @@
          is a caster while a plain Rogue is not. Read both holders. */
       [rec, sub].forEach(function (holder, hi) {
         if (!holder) return;
-        spellCounts(holder, lv).forEach(function (sc) {
+        spellCounts(holder, lv, build.abilities || build.base).forEach(function (sc) {
           var k = tag + ':' + sc.kind + hi;
           out.push({
             key: k, kind: sc.kind, ci: ci, entry: entry,
@@ -6241,7 +6428,36 @@
   /* "Cantrips Known" and "Prepared Spells"/"Spells Known" are columns in the
      class table, labelled with a {@filter ...} tag we have to look inside.
      Some records skip the table and carry a plain 20-entry array instead. */
-  function spellCounts(rec, level) {
+  /* How many spells a class prepares, when the books give it as a sum rather
+     than a table: "<$level$> + <$wis_mod$>", or "<$level$> / 2 + <$cha_mod$>"
+     for the half casters. Division rounds down, as "half your paladin level
+     rounded down" always does. */
+  function preparedFormula(text, level, abilities) {
+    if (!text) return 0;
+    var total = 0;
+    String(text).split('+').forEach(function (term) {
+      var t = term.trim();
+      var half = /\/\s*2\s*$/.test(t);
+      t = t.replace(/\/\s*2\s*$/, '').trim();
+
+      var n = 0;
+      if (/<\$level\$>/.test(t)) n = level;
+      else {
+        var m = t.match(/<\$([a-z]{3})_mod\$>/i);
+        if (m) {
+          var score = (abilities && abilities[m[1].toLowerCase()]);
+          n = score == null ? 0 : SRD.mod(score);
+        } else {
+          var lit = parseInt(t, 10);
+          n = isNaN(lit) ? 0 : lit;
+        }
+      }
+      total += half ? Math.floor(n / 2) : n;
+    });
+    return Math.max(0, total);
+  }
+
+  function spellCounts(rec, level, abilities) {
     var out = [];
     var i = U.clamp(level, 1, 20) - 1;
     if (Array.isArray(rec.cantripProgression) && rec.cantripProgression[i] > 0) {
@@ -6253,7 +6469,20 @@
                  label: rec.preparedSpellsProgression ? 'Prepared spells' : 'Spells known',
                  count: known[i] });
     }
-    if (out.length) return out;
+
+    /* The 2014 classes state it as a formula instead, and nothing was reading
+       it - so a 2014 cleric, druid, wizard or paladin was offered cantrips and
+       nothing else, while their 2024 versions worked because those use an
+       array. Same class, same level, different book, silently different sheet. */
+    if (!out.some(function (o) { return o.kind === 'spell'; }) && rec.preparedSpells) {
+      var n = preparedFormula(rec.preparedSpells, level, abilities);
+      if (n > 0) out.push({ kind: 'spell', label: 'Prepared spells', count: n });
+    }
+
+    /* Only fall through to reading the level table when neither of the above
+       found anything - it must not be skipped just because cantrips were
+       found, which is what the early return here used to do. */
+    if (out.some(function (o) { return o.kind === 'spell'; })) return out;
 
     (rec.classTableGroups || rec.subclassTableGroups || []).forEach(function (g) {
       var labels = g.colLabels || [];
@@ -6263,7 +6492,11 @@
         var text = String(raw).replace(/\{@filter\s+([^|}]+)[^}]*\}/g, '$1');
         var n = row[i];
         if (typeof n !== 'number' || n <= 0) return;
-        if (/cantrip/i.test(text)) out.push({ kind: 'cantrip', label: 'Cantrips', count: n });
+        if (/cantrip/i.test(text)) {
+          if (!out.some(function (o) { return o.kind === 'cantrip'; })) {
+            out.push({ kind: 'cantrip', label: 'Cantrips', count: n });
+          }
+        }
         else if (/prepared spells|spells known/i.test(text)) {
           out.push({ kind: 'spell', label: /prepared/i.test(text) ? 'Prepared spells' : 'Spells known', count: n });
         }
@@ -7603,6 +7836,10 @@
        pass can recompute rather than accumulate - it runs again every time
        something is equipped. */
     a.baseSpeed = a.speed;
+    /* Scores before any item touches them, for the same reason as baseSpeed:
+       an item that sets Strength must not stack with itself when the gear pass
+       runs again. */
+    a.baseAbilities = U.clone(a.abilities);
 
     /* Only the class you started as grants saving-throw proficiencies. No
        edition gives them on a multiclass, and adding them silently would

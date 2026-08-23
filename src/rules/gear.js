@@ -28,11 +28,18 @@
   }
 
   /* Which slot an item occupies, or null if it is not something you wear. */
+  /* Armour and shields are exclusive - one each. Weapons and trinkets are not:
+     you can hold two weapons and wear several rings, and pretending otherwise
+     would be a rule the books do not have. */
+  var EXCLUSIVE = { armor: 1, shield: 1 };
+
   function slotOf(item) {
     var t = baseType(item);
     if (ARMOUR[t]) return 'armor';
     if (t === 'S') return 'shield';
     if (item && (item.weaponCategory || t === 'M' || t === 'R')) return 'weapon';
+    /* anything with a mechanical effect is worth being able to put on */
+    if (VT.itemfx && VT.itemfx.effectsOf(item)) return 'trinket';
     return null;
   }
 
@@ -72,11 +79,13 @@
      breastplates, and a sheet that lets you is worse than one that does not. */
   function equip(actor, entry) {
     if (!entry || !entry.gear) return false;
-    entries(actor).forEach(function (e) {
-      if (e !== entry && e.equipped && e.gear && e.gear.slot === entry.gear.slot) {
-        e.equipped = false;
-      }
-    });
+    if (EXCLUSIVE[entry.gear.slot]) {
+      entries(actor).forEach(function (e) {
+        if (e !== entry && e.equipped && e.gear && e.gear.slot === entry.gear.slot) {
+          e.equipped = false;
+        }
+      });
+    }
     entry.equipped = true;
     recompute(actor);
     return true;
@@ -125,6 +134,11 @@
      equip or unequip, and by derive() once the inventory exists. */
   function recompute(actor) {
     if (!actor) return actor;
+
+    /* Ability scores first: an item that sets Dexterity changes the armour
+       class that is about to be worked out from it, so the order matters. */
+    if (VT.itemfx) VT.itemfx.applyAbilities(actor);
+
     var arm = armour(actor), shd = shield(actor);
     var dex = SRD.mod((actor.abilities && actor.abilities.dex) || 10);
 
@@ -157,6 +171,9 @@
        have to be reconsidered every time it changes. apply() carries spent
        resources forward, so re-running it costs nothing but the recalculation. */
     if (VT.features && VT.features.apply) VT.features.apply(actor);
+
+    /* Everything else items do stacks on top of the armour and the features. */
+    if (VT.itemfx) VT.itemfx.applyRest(actor);
     return actor;
   }
 
@@ -172,6 +189,7 @@
       gear: g || undefined,
       equipped: g ? !!opts.equipped : undefined
     };
+    if (VT.itemfx) VT.itemfx.tag(entry, item);
     actor.inventory.push(entry);
     if (entry.equipped) equip(actor, entry);
     return entry;

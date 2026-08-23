@@ -208,7 +208,7 @@
          is a caster while a plain Rogue is not. Read both holders. */
       [rec, sub].forEach(function (holder, hi) {
         if (!holder) return;
-        spellCounts(holder, lv).forEach(function (sc) {
+        spellCounts(holder, lv, build.abilities || build.base).forEach(function (sc) {
           var k = tag + ':' + sc.kind + hi;
           out.push({
             key: k, kind: sc.kind, ci: ci, entry: entry,
@@ -252,7 +252,36 @@
   /* "Cantrips Known" and "Prepared Spells"/"Spells Known" are columns in the
      class table, labelled with a {@filter ...} tag we have to look inside.
      Some records skip the table and carry a plain 20-entry array instead. */
-  function spellCounts(rec, level) {
+  /* How many spells a class prepares, when the books give it as a sum rather
+     than a table: "<$level$> + <$wis_mod$>", or "<$level$> / 2 + <$cha_mod$>"
+     for the half casters. Division rounds down, as "half your paladin level
+     rounded down" always does. */
+  function preparedFormula(text, level, abilities) {
+    if (!text) return 0;
+    var total = 0;
+    String(text).split('+').forEach(function (term) {
+      var t = term.trim();
+      var half = /\/\s*2\s*$/.test(t);
+      t = t.replace(/\/\s*2\s*$/, '').trim();
+
+      var n = 0;
+      if (/<\$level\$>/.test(t)) n = level;
+      else {
+        var m = t.match(/<\$([a-z]{3})_mod\$>/i);
+        if (m) {
+          var score = (abilities && abilities[m[1].toLowerCase()]);
+          n = score == null ? 0 : SRD.mod(score);
+        } else {
+          var lit = parseInt(t, 10);
+          n = isNaN(lit) ? 0 : lit;
+        }
+      }
+      total += half ? Math.floor(n / 2) : n;
+    });
+    return Math.max(0, total);
+  }
+
+  function spellCounts(rec, level, abilities) {
     var out = [];
     var i = U.clamp(level, 1, 20) - 1;
     if (Array.isArray(rec.cantripProgression) && rec.cantripProgression[i] > 0) {
@@ -264,7 +293,20 @@
                  label: rec.preparedSpellsProgression ? 'Prepared spells' : 'Spells known',
                  count: known[i] });
     }
-    if (out.length) return out;
+
+    /* The 2014 classes state it as a formula instead, and nothing was reading
+       it - so a 2014 cleric, druid, wizard or paladin was offered cantrips and
+       nothing else, while their 2024 versions worked because those use an
+       array. Same class, same level, different book, silently different sheet. */
+    if (!out.some(function (o) { return o.kind === 'spell'; }) && rec.preparedSpells) {
+      var n = preparedFormula(rec.preparedSpells, level, abilities);
+      if (n > 0) out.push({ kind: 'spell', label: 'Prepared spells', count: n });
+    }
+
+    /* Only fall through to reading the level table when neither of the above
+       found anything - it must not be skipped just because cantrips were
+       found, which is what the early return here used to do. */
+    if (out.some(function (o) { return o.kind === 'spell'; })) return out;
 
     (rec.classTableGroups || rec.subclassTableGroups || []).forEach(function (g) {
       var labels = g.colLabels || [];
@@ -274,7 +316,11 @@
         var text = String(raw).replace(/\{@filter\s+([^|}]+)[^}]*\}/g, '$1');
         var n = row[i];
         if (typeof n !== 'number' || n <= 0) return;
-        if (/cantrip/i.test(text)) out.push({ kind: 'cantrip', label: 'Cantrips', count: n });
+        if (/cantrip/i.test(text)) {
+          if (!out.some(function (o) { return o.kind === 'cantrip'; })) {
+            out.push({ kind: 'cantrip', label: 'Cantrips', count: n });
+          }
+        }
         else if (/prepared spells|spells known/i.test(text)) {
           out.push({ kind: 'spell', label: /prepared/i.test(text) ? 'Prepared spells' : 'Spells known', count: n });
         }

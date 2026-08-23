@@ -101,6 +101,11 @@ Day to day:
   put it back without losing it. Heavy and medium armour give disadvantage on
   Stealth, armour you lack the Strength for costs 10 feet, and both stop a
   monk's Unarmored Movement and a barbarian's Fast Movement.
+- **Magic items do what they say.** An attuned Belt of Hill Giant Strength sets
+  your Strength, a Ring of Protection adds its +1 to AC and saves, a Ring of
+  Fire Resistance gives you resistance, Boots of Speed double your movement. An
+  item that needs attunement does nothing until attuned; anything else has to be
+  worn. Attunement offers what is in your pack, not the whole compendium.
 - **Summoning spells put the creature on your sheet.** Cast Summon Beast and
   its stat block appears with buttons for the shape (Land, Water, Air) and the
   slot level — both rebuild the block, so AC, hit points, speeds, traits and

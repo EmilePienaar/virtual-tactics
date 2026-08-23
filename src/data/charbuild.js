@@ -277,6 +277,10 @@
        pass can recompute rather than accumulate - it runs again every time
        something is equipped. */
     a.baseSpeed = a.speed;
+    /* Scores before any item touches them, for the same reason as baseSpeed:
+       an item that sets Strength must not stack with itself when the gear pass
+       runs again. */
+    a.baseAbilities = U.clone(a.abilities);
 
     /* Only the class you started as grants saving-throw proficiencies. No
        edition gives them on a multiclass, and adding them silently would
