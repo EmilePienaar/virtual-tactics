@@ -313,7 +313,7 @@
      likes and this just runs again. */
   var GROUPS = [
     { key: 'play',  label: 'Play',
-      match: /^(abilities|skills|tools|actions|custom roll|conditions|wild shape|companion|resources)$|^$/i },
+      match: /^(abilities|skills|tools|actions|custom roll|conditions|defences|wild shape|companion|resources)$|^$/i },
     /* Spells are their own section rather than a general "magic" one: the
        slots now sit inside the spell list, so there is nothing else left for a
        magic section to hold. */

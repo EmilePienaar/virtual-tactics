@@ -118,9 +118,13 @@
     actor.itemSaveBonus = saveBonus;
     actor.itemSpellAttack = spellAtk;
     actor.itemSpellDc = spellDc;
-    actor.resist = resist;
-    actor.conditionImmune = condImm;
-    actor.itemNotes = notes;
+    /* Kept apart from actor.resist, which resist.js owns - it merges these
+        with what the race and the class features grant. Writing straight to
+        actor.resist here would erase a tiefling's fire resistance the moment
+        they picked up any magic item. */
+     actor.itemResist = resist;
+     actor.itemConditionImmune = condImm;
+     actor.itemNotes = notes;
 
     if (speedMul !== 1 || speedAdd) {
       actor.speed = Math.round((actor.speed || 30) * speedMul) + speedAdd;

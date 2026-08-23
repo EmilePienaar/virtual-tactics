@@ -574,6 +574,10 @@
       el('summary', {}, ['Skills']), el('div', {}, [skillBox])
     ]));
 
+    /* Damage resistances, from whatever granted them. */
+    var defCard = defencesPanel(a);
+    if (defCard) view.appendChild(defCard);
+
     /* What you are carrying, and what of it you are wearing. */
     var gearCard = gearPanel(a);
     if (gearCard) view.appendChild(gearCard);
@@ -1605,6 +1609,34 @@
         a.wildShape = null; save(); render();
       } }, ['Close ' + w.name])
     ]));
+    return card;
+  }
+
+  /* Resistances, immunities and vulnerabilities, with the conditional ones
+     listed as reminders rather than claimed outright. */
+  function defencesPanel(a) {
+    var has = (a.resist || []).length || (a.immune || []).length ||
+              (a.vulnerable || []).length || (a.conditionImmune || []).length ||
+              (a.resistNotes || []).length;
+    if (!has) return null;
+
+    var card = el('div', { class: 'card' }, [el('h3', {}, ['Defences'])]);
+    function row(label, list, cls) {
+      if (!list || !list.length) return;
+      var box = el('div', { class: 'row' }, [el('label', {}, [label])]);
+      var chips = el('div', { class: 'grow' });
+      list.forEach(function (t) { chips.appendChild(el('span', { class: 'chip ' + cls }, [U.cap(t)])); });
+      box.appendChild(chips);
+      card.appendChild(box);
+    }
+    row('Resistant', a.resist, 'good on');
+    row('Immune', a.immune, 'good on');
+    row('Vulnerable', a.vulnerable, 'bad on');
+    row('Cond. immune', a.conditionImmune, 'good on');
+
+    (a.resistNotes || []).forEach(function (n) {
+      card.appendChild(el('div', { class: 'muted' }, [n]));
+    });
     return card;
   }
 

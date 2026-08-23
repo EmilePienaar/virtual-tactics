@@ -468,6 +468,19 @@
       });
     }
 
+    /* Resistances a feature grants permanently. The conditional ones - Rage,
+       Bear Totem, anything you switch on - come back as notes instead, because
+       a sheet that claims a defence you do not currently have is worse than one
+       that says nothing. */
+    if (VT.resist && VT.charbuild && VT.charbuild.featureRecord) {
+      var recs = (actor.features || []).map(function (f) {
+        return VT.charbuild.featureRecord(f, f.className || className);
+      }).filter(Boolean);
+      var got = VT.resist.fromFeatures(actor, recs);
+      actor.featureResist = got.resist;
+      actor.featureResistNotes = got.notes;
+    }
+
     actor.featureNotes = notes;
     actor.derivedActionCount = derivedCount;
     actor.expertise = (choices.expertise || actor.expertise || [])

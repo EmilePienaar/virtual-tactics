@@ -282,6 +282,11 @@
        runs again. */
     a.baseAbilities = U.clone(a.abilities);
 
+    /* What the race itself grants - tiefling fire, aasimar necrotic and
+       radiant. Recorded here so the gear pass can merge it with items and
+       features without having to re-read the race every time. */
+    if (VT.resist) a.raceDefences = VT.resist.fromRace(c);
+
     /* Only the class you started as grants saving-throw proficiencies. No
        edition gives them on a multiclass, and adding them silently would
        inflate every save the character makes. */

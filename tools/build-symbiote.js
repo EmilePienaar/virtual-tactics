@@ -23,6 +23,7 @@ const ENGINE = [
   'src/rules/actor.js',
   'src/rules/gear.js',
   'src/rules/itemfx.js',
+  'src/rules/resist.js',
   'src/data/tags.js',
   'src/data/fivetools.js',
   'src/data/convert.js',

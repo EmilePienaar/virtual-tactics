@@ -174,6 +174,10 @@
 
     /* Everything else items do stacks on top of the armour and the features. */
     if (VT.itemfx) VT.itemfx.applyRest(actor);
+
+    /* Race, features and items all grant resistances; this is where the three
+       become one list. */
+    if (VT.resist) VT.resist.gather(actor);
     return actor;
   }
 

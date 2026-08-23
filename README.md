@@ -101,6 +101,10 @@ Day to day:
   put it back without losing it. Heavy and medium armour give disadvantage on
   Stealth, armour you lack the Strength for costs 10 feet, and both stop a
   monk's Unarmored Movement and a barbarian's Fast Movement.
+- **Damage resistances** come from your race, your class features and your
+  items, merged into one list. Conditional ones — Rage, Bear Totem, anything you
+  switch on — are listed as reminders rather than claimed, because a sheet that
+  overstates a defence is worse than one that says nothing.
 - **Magic items do what they say.** An attuned Belt of Hill Giant Strength sets
   your Strength, a Ring of Protection adds its +1 to AC and saves, a Ring of
   Fire Resistance gives you resistance, Boots of Speed double your movement. An
