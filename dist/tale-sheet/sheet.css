@@ -212,3 +212,21 @@ details > div { padding: 0 8px 8px; }
 }
 .spell-head .lbl { flex: 1; font-size: 11px; color: var(--gold); letter-spacing: .04em; }
 .spell-head .sub { color: var(--ink-faint); letter-spacing: 0; }
+
+/* ---- a spell's own words, folded away until asked for ---- */
+.spellwrap { margin: 0 0 4px 6px; }
+.spellwrap > summary {
+  cursor: pointer; font-size: 10px; color: var(--ink-faint);
+  list-style: none; padding: 1px 0;
+}
+.spellwrap > summary::-webkit-details-marker { display: none; }
+.spellwrap > summary::before { content: '▸ '; }
+.spellwrap[open] > summary::before { content: '▾ '; }
+.spellwrap > summary:hover { color: var(--gold); }
+.spelltext {
+  font-size: 11px; color: var(--ink-dim); line-height: 1.45;
+  padding: 5px 8px; margin-top: 3px;
+  background: #17151f; border-radius: 4px;
+  border-left: 2px solid var(--line);
+  white-space: pre-wrap;
+}

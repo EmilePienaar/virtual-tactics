@@ -812,6 +812,24 @@ details > div { padding: 0 8px 8px; }
 .spell-head .lbl { flex: 1; font-size: 11px; color: var(--gold); letter-spacing: .04em; }
 .spell-head .sub { color: var(--ink-faint); letter-spacing: 0; }
 
+/* ---- a spell's own words, folded away until asked for ---- */
+.spellwrap { margin: 0 0 4px 6px; }
+.spellwrap > summary {
+  cursor: pointer; font-size: 10px; color: var(--ink-faint);
+  list-style: none; padding: 1px 0;
+}
+.spellwrap > summary::-webkit-details-marker { display: none; }
+.spellwrap > summary::before { content: '▸ '; }
+.spellwrap[open] > summary::before { content: '▾ '; }
+.spellwrap > summary:hover { color: var(--gold); }
+.spelltext {
+  font-size: 11px; color: var(--ink-dim); line-height: 1.45;
+  padding: 5px 8px; margin-top: 3px;
+  background: #17151f; border-radius: 4px;
+  border-left: 2px solid var(--line);
+  white-space: pre-wrap;
+}
+
 /* The symbiote sheet, hosted inside the Forge.
 
    sheet.css is written for a panel that owns its window. Rather than editing
@@ -1666,6 +1684,8 @@ details > div { padding: 0 8px 8px; }
     paralyzed:  { name: 'Paralyzed',  atkAgainst: 1, noAct: true, speed0: true },
     unconscious:{ name: 'Unconscious',atkAgainst: 1, noAct: true, speed0: true },
     blessed:    { name: 'Blessed',    bonusToHit: '1d4' },
+    /* Bane is Bless read backwards and was simply missing. */
+    baned:      { name: 'Baned',      bonusToHit: '-1d4' },
     shielded:   { name: 'Shielded',   acBonus: 5 },
     hasted:     { name: 'Hasted',     speedMult: 2, acBonus: 2 },
     slowed:     { name: 'Slowed',     speedMult: .5 },
@@ -4598,7 +4618,11 @@ details > div { padding: 0 8px 8px; }
       var condTag = T.splitTags(raw).find(function (t) {
         return t.tag === 'condition' && SRD.CONDITIONS[String(t.parts[0]).toLowerCase()];
       });
-      act.condition = condTag ? String(condTag.parts[0]).toLowerCase() : 'blessed';
+      /* Only carry a condition the spell actually names. "blessed" is this
+         engine's marker for Bless's +1d4, not a catch-all, and defaulting to it
+         put it on every buff and utility spell in the books - which is why it
+         turned up everywhere it had no business being. */
+      if (condTag) act.condition = String(condTag.parts[0]).toLowerCase();
       if (expr) {
         /* Damage, but the spell names neither a saving throw nor an attack
            roll: Magic Missile and its kind simply hit. The battle map has no
@@ -4608,10 +4632,7 @@ details > div { padding: 0 8px 8px; }
         act.dmg = expr; act.dmgType = dtype;
         act.half = !/automatically|without an attack roll|strikes? .*simultaneous/i.test(raw);
         act.autoHit = !act.half;
-        /* The buff branch above sets a default condition before we know this
-           is damage. Leaving it behind put "blessed" on Magic Missile, which
-           is not a thing it does. */
-        if (act.condition === 'blessed') delete act.condition;
+
       }
     }
     /* Spell text carries its own placeholders ({{spellcasting_mod}} in a few
@@ -6507,17 +6528,117 @@ details > div { padding: 0 8px 8px; }
     return out;
   }
 
-  /* The summon spells this character actually has, paired with their block. */
-  function available(actor) {
+  /* ---- the three shapes a summon spell takes ------------------------------
+
+     Only sixteen spells have a creature that names them back. The rest say what
+     they summon in one of two other ways, and both are just as readable:
+
+       named     Find Familiar and Animate Dead list them outright -
+                 "{@creature bat}", "{@creature skeleton}"
+       filtered  the Conjure spells give criteria -
+                 "{@filter beast of challenge rating 2 or lower|bestiary|
+                  challenge rating=[&0;&2]|type=beast|miscellaneous=!swarm}"
+
+     Handling only the first shape was why Find Familiar and every Conjure spell
+     did nothing. It was never about which class was casting. */
+
+  function spellText(sp) {
+    try { return JSON.stringify(sp.entries || ''); } catch (e) { return ''; }
+  }
+
+  /* "{@creature bat}", "{@creature imp|MM}" -> the records themselves. */
+  function namedCreatures(sp) {
+    var FT = VT.fivetools;
+    if (!FT || !FT.get) return [];
+    var text = spellText(sp);
+    var out = [], seen = {};
+    var re = /\{@creature ([^}|]+)/g, m;
+    while ((m = re.exec(text)) !== null) {
+      var key = m[1].trim().toLowerCase();
+      if (seen[key]) continue;
+      seen[key] = 1;
+      var rec = (FT.get('creature') || []).find(function (c) {
+        return String(c.name).toLowerCase() === key;
+      });
+      if (rec) out.push(rec);
+    }
+    return out;
+  }
+
+  /* A {@filter ...|bestiary|...} clause, read as a bestiary query. */
+  function filteredCreatures(sp, level) {
+    var FT = VT.fivetools;
+    if (!FT || !FT.get) return [];
+    var text = spellText(sp);
+    var WS = VT.wildshape;
+    var best = null;
+
+    var re = /\{@filter ([^|}]*)\|bestiary\|([^}]*)\}/g, m;
+    while ((m = re.exec(text)) !== null) {
+      var parts = m[2].split('|');
+      var maxCr = null, type = null, noSwarm = false;
+      parts.forEach(function (piece) {
+        var cr = piece.match(/challenge rating=\[&\d+;&(\d+)\]/i);
+        if (cr) maxCr = parseInt(cr[1], 10);
+        var ty = piece.match(/^type=([^=]+)$/i);
+        if (ty) type = ty[1].toLowerCase();
+        if (/miscellaneous=!swarm/i.test(piece)) noSwarm = true;
+      });
+      if (maxCr == null || !type) continue;
+      /* The spell lists several bands - CR 2 or lower, CR 1 or lower and more
+         of them, and so on. Offer the widest, which is the first. */
+      if (!best || maxCr > best.maxCr) best = { maxCr: maxCr, type: type, noSwarm: noSwarm };
+    }
+    if (!best) return [];
+
+    return (FT.get('creature') || []).filter(function (c) {
+      if (String(VT.convert.typeOf(c) || '').toLowerCase().indexOf(best.type) < 0) return false;
+      if (best.noSwarm && /swarm/i.test(c.name)) return false;
+      var cr = WS.crNumber(VT.convert.crOf(c));
+      return cr != null && cr <= best.maxCr;
+    }).sort(function (a, b) {
+      var d = (WS.crNumber(VT.convert.crOf(a)) || 0) - (WS.crNumber(VT.convert.crOf(b)) || 0);
+      return d || String(a.name).localeCompare(String(b.name));
+    });
+  }
+
+  /* Everything a given summon spell could put on the board. */
+  function choicesFor(sp, level) {
     var map = bySpell();
+    var direct = map[String(sp.name).toLowerCase()];
+    if (direct) return { kind: 'block', list: [direct] };
+    var named = namedCreatures(sp);
+    if (named.length) return { kind: 'named', list: named };
+    var filtered = filteredCreatures(sp, level);
+    if (filtered.length) return { kind: 'filtered', list: filtered };
+    return { kind: 'none', list: [] };
+  }
+
+  /* Does this spell summon anything? The books tag it. */
+  function isSummon(sp) {
+    return !!(sp && ((sp.miscTags || []).indexOf('SMN') >= 0 ||
+                     bySpell()[String(sp.name).toLowerCase()]));
+  }
+
+  /* The summon spells this character has, with what each can call up. */
+  function available(actor) {
+    var FT = VT.fivetools;
+    if (!FT || !FT.get) return [];
     var seen = {};
     return (actor.actions || []).filter(function (act) {
       return act.spellLevel != null;
     }).map(function (act) {
-      var mon = map[String(act.name).toLowerCase()];
-      if (!mon || seen[act.name]) return null;
+      if (seen[act.name]) return null;
+      var sp = (FT.get('spell') || []).find(function (x) {
+        return String(x.name).toLowerCase() === String(act.name).toLowerCase();
+      });
+      if (!sp || !isSummon(sp)) return null;
+      var lvl = act.spellLevel || sp.level || 1;
+      var got = choicesFor(sp, lvl);
+      if (!got.list.length) return null;
       seen[act.name] = 1;
-      return { spell: act.name, minLevel: act.spellLevel || mon.summonedBySpellLevel || 1, mon: mon };
+      return { spell: act.name, minLevel: lvl, shape: got.kind,
+               mon: got.list[0], list: got.list };
     }).filter(Boolean);
   }
 
@@ -6686,6 +6807,8 @@ details > div { padding: 0 8px 8px; }
 
   VT.summon = {
     available: available, forms: forms, conjure: conjure,
+    isSummon: isSummon, choicesFor: choicesFor,
+    namedCreatures: namedCreatures, filteredCreatures: filteredCreatures,
     acAt: acAt, hpAt: hpAt, tagsIn: tagsIn
   };
 })();
@@ -13560,6 +13683,10 @@ details > div { padding: 0 8px 8px; }
         card.appendChild(actionRow(a, act));
         var sl = S.castAt[act.name] || act.spellLevel;
         if (lv > 0) card.appendChild(castRow(a, act, sl, VT.upcast.at(act, sl)));
+        /* Most spells do more than their damage line says, and at the table a
+           player needs the words rather than just the dice. Folded away by
+           default so forty spells stay a list instead of an essay. */
+        if (act.desc) card.appendChild(spellText(act));
       });
       if (!(byLevel[lv] || []).length) {
         card.appendChild(el('div', { class: 'muted', style: { marginLeft: '6px' } }, [
@@ -13578,6 +13705,14 @@ details > div { padding: 0 8px 8px; }
         left, pact.count, 'pact'));
     }
     return card;
+  }
+
+  /* A spell's own words, folded away until asked for. */
+  function spellText(act) {
+    return el('details', { class: 'spellwrap' }, [
+      el('summary', {}, ['what it does']),
+      el('div', { class: 'spelltext' }, [act.desc])
+    ]);
   }
 
   /* The head of a level's section: its name, and the slots that pay for it. */
@@ -13700,6 +13835,13 @@ details > div { padding: 0 8px 8px; }
             '  · cast at ' + U.ord(opt.minLevel) + ' or higher'])
         ]),
         el('button', { class: 'btn sm primary', onClick: function () {
+          /* A spell that names its options - Find Familiar, the Conjure ones -
+             puts the list on screen instead of picking for you. */
+          if (opt.shape !== 'block' && (opt.list || []).length > 1) {
+            a.summonPicking = a.summonPicking === opt.spell ? null : opt.spell;
+            save(); render();
+            return;
+          }
           var forms = VT.summon.forms(opt.mon);
           a.summons = a.summons || [];
           a.summons.push(VT.summon.conjure(opt.mon, opt.minLevel,
@@ -13710,8 +13852,46 @@ details > div { padding: 0 8px 8px; }
           a.summons[a.summons.length - 1].minLevel = opt.minLevel;
           save(); render();
           toast(opt.spell + ' cast', 'ok');
-        } }, ['Summon'])
+        } }, [opt.shape !== 'block' && (opt.list||[]).length > 1
+               ? (a.summonPicking === opt.spell ? 'Never mind' : 'Choose…')
+               : 'Summon'])
       ]));
+
+      /* the creatures this spell can call up */
+      if (a.summonPicking === opt.spell) {
+        var q = '';
+        var box = el('div', { class: 'goods', style: { maxHeight: '190px', overflowY: 'auto' } });
+        var draw = function () {
+          U.clear(box);
+          var shown = (q ? opt.list.filter(function (m) {
+            return String(m.name).toLowerCase().indexOf(q) >= 0;
+          }) : opt.list).slice(0, 60);
+          shown.forEach(function (m) {
+            box.appendChild(el('div', { class: 'rollrow' }, [
+              el('span', { class: 'lbl' }, [m.name,
+                el('span', { class: 'sub' }, ['  ' + (m.source || '') +
+                  (VT.convert.crOf(m) != null
+                    ? '  CR ' + VT.wildshape.crLabel(VT.convert.crOf(m)) : '')])]),
+              el('button', { class: 'btn sm primary', onClick: function () {
+                a.summons = a.summons || [];
+                var made = VT.summon.conjure(m, opt.minLevel, null, a);
+                made.from = m.name; made.fromSource = m.source; made.minLevel = opt.minLevel;
+                a.summons.push(made);
+                a.summonPicking = null;
+                save(); render();
+                toast(m.name + ' answers', 'ok');
+              } }, ['Summon'])
+            ]));
+          });
+          if (!shown.length) box.appendChild(el('div', { class: 'muted' }, ['Nothing matches.']));
+        };
+        if (opt.list.length > 12) {
+          card.appendChild(el('input', { type: 'search', placeholder: 'search…',
+            onInput: U.debounce(function (e) { q = e.target.value.toLowerCase(); draw(); }, 120) }));
+        }
+        card.appendChild(box);
+        draw();
+      }
     });
     card.appendChild(el('p', { class: 'muted' }, [
       'Casting here does not spend a slot - do that on the spell itself. This ' +
@@ -14519,10 +14699,10 @@ details > div { padding: 0 8px 8px; }
 
     /* spells */
     if (b.cls && b.cls.spellcastingAbility) {
-      var spells = FT.get('spell').filter(function (s) {
-        var l = s.classes && s.classes.fromClassList;
-        return !l || l.some(function (x) { return String(x.name).toLowerCase() === b.cls.name.toLowerCase(); });
-      });
+      /* "no class list, so allow it" let every spell in the newer books
+         through, because those do not carry fromClassList at all - which is how
+         a wizard ended up able to prepare cure wounds. */
+      var spells = FT.spellsForClass(b.cls.name, b.cls.source);
       var sp = el('div', { class: 'card' }, [el('h3', {}, ['Spells — ' + b.spells.length + ' chosen'])]);
       sp.appendChild(addPicker('Spell', spells, function (rec) {
         if (rec) { b.spells.push(rec); render(); }
@@ -15099,7 +15279,12 @@ details > div { padding: 0 8px 8px; }
       var armours = FT.get('item').filter(function (i) {
         return ARM.indexOf(String(i.type || '').split('|')[0]) >= 0 || (i.armor && i.ac);
       });
-      var spells = FT.get('spell');
+      /* The Edit tab is the escape hatch, so it offers everything - but leads
+         with what this character can actually cast. */
+      var mine = (a.classes || []).length
+        ? FT.spellsForClass(a.classes[0].name, a.classes[0].source) : [];
+      var rest = FT.get('spell').filter(function (s) { return mine.indexOf(s) < 0; });
+      var spells = mine.concat(rest);
       add.appendChild(addPicker('Weapon', weapons, function (rec) { addToBuild(a, 'weapons', rec); }));
       add.appendChild(addPicker('Spell', spells, function (rec) { addToBuild(a, 'spells', rec); },
         function (s) { return s.name + (s.level ? ' (' + s.level + ')' : ' (C)'); }));
@@ -16593,11 +16778,11 @@ details > div { padding: 0 8px 8px; }
     }
     var className = c.cls.name;
     var all = FT.get('spell');
-    var forClass = all.filter(function (s) {
-      var list = s.classes && s.classes.fromClassList;
-      if (!list) return false;
-      return list.some(function (x) { return String(x.name).toLowerCase() === className.toLowerCase(); });
-    });
+    /* Ask the loader, which reads the modern per-class spell lists as well as
+       the older fromClassList field, and honours a setting that removes spells
+       from a list. Filtering on fromClassList alone misses most of the newer
+       books, where the field is not there at all. */
+    var forClass = FT.spellsForClass(className, c.cls.source);
     var usingAll = false;
     if (!forClass.length) { forClass = all; usingAll = true; }
 

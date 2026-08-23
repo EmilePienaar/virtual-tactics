@@ -1045,6 +1045,10 @@
         card.appendChild(actionRow(a, act));
         var sl = S.castAt[act.name] || act.spellLevel;
         if (lv > 0) card.appendChild(castRow(a, act, sl, VT.upcast.at(act, sl)));
+        /* Most spells do more than their damage line says, and at the table a
+           player needs the words rather than just the dice. Folded away by
+           default so forty spells stay a list instead of an essay. */
+        if (act.desc) card.appendChild(spellText(act));
       });
       if (!(byLevel[lv] || []).length) {
         card.appendChild(el('div', { class: 'muted', style: { marginLeft: '6px' } }, [
@@ -1063,6 +1067,14 @@
         left, pact.count, 'pact'));
     }
     return card;
+  }
+
+  /* A spell's own words, folded away until asked for. */
+  function spellText(act) {
+    return el('details', { class: 'spellwrap' }, [
+      el('summary', {}, ['what it does']),
+      el('div', { class: 'spelltext' }, [act.desc])
+    ]);
   }
 
   /* The head of a level's section: its name, and the slots that pay for it. */
@@ -1185,6 +1197,13 @@
             '  · cast at ' + U.ord(opt.minLevel) + ' or higher'])
         ]),
         el('button', { class: 'btn sm primary', onClick: function () {
+          /* A spell that names its options - Find Familiar, the Conjure ones -
+             puts the list on screen instead of picking for you. */
+          if (opt.shape !== 'block' && (opt.list || []).length > 1) {
+            a.summonPicking = a.summonPicking === opt.spell ? null : opt.spell;
+            save(); render();
+            return;
+          }
           var forms = VT.summon.forms(opt.mon);
           a.summons = a.summons || [];
           a.summons.push(VT.summon.conjure(opt.mon, opt.minLevel,
@@ -1195,8 +1214,46 @@
           a.summons[a.summons.length - 1].minLevel = opt.minLevel;
           save(); render();
           toast(opt.spell + ' cast', 'ok');
-        } }, ['Summon'])
+        } }, [opt.shape !== 'block' && (opt.list||[]).length > 1
+               ? (a.summonPicking === opt.spell ? 'Never mind' : 'Choose…')
+               : 'Summon'])
       ]));
+
+      /* the creatures this spell can call up */
+      if (a.summonPicking === opt.spell) {
+        var q = '';
+        var box = el('div', { class: 'goods', style: { maxHeight: '190px', overflowY: 'auto' } });
+        var draw = function () {
+          U.clear(box);
+          var shown = (q ? opt.list.filter(function (m) {
+            return String(m.name).toLowerCase().indexOf(q) >= 0;
+          }) : opt.list).slice(0, 60);
+          shown.forEach(function (m) {
+            box.appendChild(el('div', { class: 'rollrow' }, [
+              el('span', { class: 'lbl' }, [m.name,
+                el('span', { class: 'sub' }, ['  ' + (m.source || '') +
+                  (VT.convert.crOf(m) != null
+                    ? '  CR ' + VT.wildshape.crLabel(VT.convert.crOf(m)) : '')])]),
+              el('button', { class: 'btn sm primary', onClick: function () {
+                a.summons = a.summons || [];
+                var made = VT.summon.conjure(m, opt.minLevel, null, a);
+                made.from = m.name; made.fromSource = m.source; made.minLevel = opt.minLevel;
+                a.summons.push(made);
+                a.summonPicking = null;
+                save(); render();
+                toast(m.name + ' answers', 'ok');
+              } }, ['Summon'])
+            ]));
+          });
+          if (!shown.length) box.appendChild(el('div', { class: 'muted' }, ['Nothing matches.']));
+        };
+        if (opt.list.length > 12) {
+          card.appendChild(el('input', { type: 'search', placeholder: 'search…',
+            onInput: U.debounce(function (e) { q = e.target.value.toLowerCase(); draw(); }, 120) }));
+        }
+        card.appendChild(box);
+        draw();
+      }
     });
     card.appendChild(el('p', { class: 'muted' }, [
       'Casting here does not spend a slot - do that on the spell itself. This ' +
@@ -2004,10 +2061,10 @@
 
     /* spells */
     if (b.cls && b.cls.spellcastingAbility) {
-      var spells = FT.get('spell').filter(function (s) {
-        var l = s.classes && s.classes.fromClassList;
-        return !l || l.some(function (x) { return String(x.name).toLowerCase() === b.cls.name.toLowerCase(); });
-      });
+      /* "no class list, so allow it" let every spell in the newer books
+         through, because those do not carry fromClassList at all - which is how
+         a wizard ended up able to prepare cure wounds. */
+      var spells = FT.spellsForClass(b.cls.name, b.cls.source);
       var sp = el('div', { class: 'card' }, [el('h3', {}, ['Spells — ' + b.spells.length + ' chosen'])]);
       sp.appendChild(addPicker('Spell', spells, function (rec) {
         if (rec) { b.spells.push(rec); render(); }
@@ -2584,7 +2641,12 @@
       var armours = FT.get('item').filter(function (i) {
         return ARM.indexOf(String(i.type || '').split('|')[0]) >= 0 || (i.armor && i.ac);
       });
-      var spells = FT.get('spell');
+      /* The Edit tab is the escape hatch, so it offers everything - but leads
+         with what this character can actually cast. */
+      var mine = (a.classes || []).length
+        ? FT.spellsForClass(a.classes[0].name, a.classes[0].source) : [];
+      var rest = FT.get('spell').filter(function (s) { return mine.indexOf(s) < 0; });
+      var spells = mine.concat(rest);
       add.appendChild(addPicker('Weapon', weapons, function (rec) { addToBuild(a, 'weapons', rec); }));
       add.appendChild(addPicker('Spell', spells, function (rec) { addToBuild(a, 'spells', rec); },
         function (s) { return s.name + (s.level ? ' (' + s.level + ')' : ' (C)'); }));

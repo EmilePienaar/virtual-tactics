@@ -41,6 +41,8 @@
     paralyzed:  { name: 'Paralyzed',  atkAgainst: 1, noAct: true, speed0: true },
     unconscious:{ name: 'Unconscious',atkAgainst: 1, noAct: true, speed0: true },
     blessed:    { name: 'Blessed',    bonusToHit: '1d4' },
+    /* Bane is Bless read backwards and was simply missing. */
+    baned:      { name: 'Baned',      bonusToHit: '-1d4' },
     shielded:   { name: 'Shielded',   acBonus: 5 },
     hasted:     { name: 'Hasted',     speedMult: 2, acBonus: 2 },
     slowed:     { name: 'Slowed',     speedMult: .5 },

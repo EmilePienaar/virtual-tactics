@@ -828,11 +828,11 @@
     }
     var className = c.cls.name;
     var all = FT.get('spell');
-    var forClass = all.filter(function (s) {
-      var list = s.classes && s.classes.fromClassList;
-      if (!list) return false;
-      return list.some(function (x) { return String(x.name).toLowerCase() === className.toLowerCase(); });
-    });
+    /* Ask the loader, which reads the modern per-class spell lists as well as
+       the older fromClassList field, and honours a setting that removes spells
+       from a list. Filtering on fromClassList alone misses most of the newer
+       books, where the field is not there at all. */
+    var forClass = FT.spellsForClass(className, c.cls.source);
     var usingAll = false;
     if (!forClass.length) { forClass = all; usingAll = true; }
 

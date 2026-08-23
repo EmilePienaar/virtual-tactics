@@ -41,17 +41,117 @@
     return out;
   }
 
-  /* The summon spells this character actually has, paired with their block. */
-  function available(actor) {
+  /* ---- the three shapes a summon spell takes ------------------------------
+
+     Only sixteen spells have a creature that names them back. The rest say what
+     they summon in one of two other ways, and both are just as readable:
+
+       named     Find Familiar and Animate Dead list them outright -
+                 "{@creature bat}", "{@creature skeleton}"
+       filtered  the Conjure spells give criteria -
+                 "{@filter beast of challenge rating 2 or lower|bestiary|
+                  challenge rating=[&0;&2]|type=beast|miscellaneous=!swarm}"
+
+     Handling only the first shape was why Find Familiar and every Conjure spell
+     did nothing. It was never about which class was casting. */
+
+  function spellText(sp) {
+    try { return JSON.stringify(sp.entries || ''); } catch (e) { return ''; }
+  }
+
+  /* "{@creature bat}", "{@creature imp|MM}" -> the records themselves. */
+  function namedCreatures(sp) {
+    var FT = VT.fivetools;
+    if (!FT || !FT.get) return [];
+    var text = spellText(sp);
+    var out = [], seen = {};
+    var re = /\{@creature ([^}|]+)/g, m;
+    while ((m = re.exec(text)) !== null) {
+      var key = m[1].trim().toLowerCase();
+      if (seen[key]) continue;
+      seen[key] = 1;
+      var rec = (FT.get('creature') || []).find(function (c) {
+        return String(c.name).toLowerCase() === key;
+      });
+      if (rec) out.push(rec);
+    }
+    return out;
+  }
+
+  /* A {@filter ...|bestiary|...} clause, read as a bestiary query. */
+  function filteredCreatures(sp, level) {
+    var FT = VT.fivetools;
+    if (!FT || !FT.get) return [];
+    var text = spellText(sp);
+    var WS = VT.wildshape;
+    var best = null;
+
+    var re = /\{@filter ([^|}]*)\|bestiary\|([^}]*)\}/g, m;
+    while ((m = re.exec(text)) !== null) {
+      var parts = m[2].split('|');
+      var maxCr = null, type = null, noSwarm = false;
+      parts.forEach(function (piece) {
+        var cr = piece.match(/challenge rating=\[&\d+;&(\d+)\]/i);
+        if (cr) maxCr = parseInt(cr[1], 10);
+        var ty = piece.match(/^type=([^=]+)$/i);
+        if (ty) type = ty[1].toLowerCase();
+        if (/miscellaneous=!swarm/i.test(piece)) noSwarm = true;
+      });
+      if (maxCr == null || !type) continue;
+      /* The spell lists several bands - CR 2 or lower, CR 1 or lower and more
+         of them, and so on. Offer the widest, which is the first. */
+      if (!best || maxCr > best.maxCr) best = { maxCr: maxCr, type: type, noSwarm: noSwarm };
+    }
+    if (!best) return [];
+
+    return (FT.get('creature') || []).filter(function (c) {
+      if (String(VT.convert.typeOf(c) || '').toLowerCase().indexOf(best.type) < 0) return false;
+      if (best.noSwarm && /swarm/i.test(c.name)) return false;
+      var cr = WS.crNumber(VT.convert.crOf(c));
+      return cr != null && cr <= best.maxCr;
+    }).sort(function (a, b) {
+      var d = (WS.crNumber(VT.convert.crOf(a)) || 0) - (WS.crNumber(VT.convert.crOf(b)) || 0);
+      return d || String(a.name).localeCompare(String(b.name));
+    });
+  }
+
+  /* Everything a given summon spell could put on the board. */
+  function choicesFor(sp, level) {
     var map = bySpell();
+    var direct = map[String(sp.name).toLowerCase()];
+    if (direct) return { kind: 'block', list: [direct] };
+    var named = namedCreatures(sp);
+    if (named.length) return { kind: 'named', list: named };
+    var filtered = filteredCreatures(sp, level);
+    if (filtered.length) return { kind: 'filtered', list: filtered };
+    return { kind: 'none', list: [] };
+  }
+
+  /* Does this spell summon anything? The books tag it. */
+  function isSummon(sp) {
+    return !!(sp && ((sp.miscTags || []).indexOf('SMN') >= 0 ||
+                     bySpell()[String(sp.name).toLowerCase()]));
+  }
+
+  /* The summon spells this character has, with what each can call up. */
+  function available(actor) {
+    var FT = VT.fivetools;
+    if (!FT || !FT.get) return [];
     var seen = {};
     return (actor.actions || []).filter(function (act) {
       return act.spellLevel != null;
     }).map(function (act) {
-      var mon = map[String(act.name).toLowerCase()];
-      if (!mon || seen[act.name]) return null;
+      if (seen[act.name]) return null;
+      var sp = (FT.get('spell') || []).find(function (x) {
+        return String(x.name).toLowerCase() === String(act.name).toLowerCase();
+      });
+      if (!sp || !isSummon(sp)) return null;
+      var lvl = act.spellLevel || sp.level || 1;
+      var got = choicesFor(sp, lvl);
+      if (!got.list.length) return null;
       seen[act.name] = 1;
-      return { spell: act.name, minLevel: act.spellLevel || mon.summonedBySpellLevel || 1, mon: mon };
+      return { spell: act.name, minLevel: lvl, shape: got.kind,
+               mon: got.list[0], list: got.list };
     }).filter(Boolean);
   }
 
@@ -220,6 +320,8 @@
 
   VT.summon = {
     available: available, forms: forms, conjure: conjure,
+    isSummon: isSummon, choicesFor: choicesFor,
+    namedCreatures: namedCreatures, filteredCreatures: filteredCreatures,
     acAt: acAt, hpAt: hpAt, tagsIn: tagsIn
   };
 })();

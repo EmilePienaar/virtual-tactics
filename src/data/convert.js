@@ -382,7 +382,11 @@
       var condTag = T.splitTags(raw).find(function (t) {
         return t.tag === 'condition' && SRD.CONDITIONS[String(t.parts[0]).toLowerCase()];
       });
-      act.condition = condTag ? String(condTag.parts[0]).toLowerCase() : 'blessed';
+      /* Only carry a condition the spell actually names. "blessed" is this
+         engine's marker for Bless's +1d4, not a catch-all, and defaulting to it
+         put it on every buff and utility spell in the books - which is why it
+         turned up everywhere it had no business being. */
+      if (condTag) act.condition = String(condTag.parts[0]).toLowerCase();
       if (expr) {
         /* Damage, but the spell names neither a saving throw nor an attack
            roll: Magic Missile and its kind simply hit. The battle map has no
@@ -392,10 +396,7 @@
         act.dmg = expr; act.dmgType = dtype;
         act.half = !/automatically|without an attack roll|strikes? .*simultaneous/i.test(raw);
         act.autoHit = !act.half;
-        /* The buff branch above sets a default condition before we know this
-           is damage. Leaving it behind put "blessed" on Magic Missile, which
-           is not a thing it does. */
-        if (act.condition === 'blessed') delete act.condition;
+
       }
     }
     /* Spell text carries its own placeholders ({{spellcasting_mod}} in a few
