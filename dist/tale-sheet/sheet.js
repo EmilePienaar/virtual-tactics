@@ -1072,7 +1072,7 @@
   /* A spell's own words, folded away until asked for. */
   function spellText(act) {
     return el('details', { class: 'spellwrap' }, [
-      el('summary', {}, ['what it does']),
+      el('summary', { title: 'What it does' }, []),
       el('div', { class: 'spelltext' }, [act.desc])
     ]);
   }

@@ -826,6 +826,28 @@
       host.appendChild(el('div', { class: 'warn-box' }, ['Pick a class first.']));
       return;
     }
+
+    /* A fighter is not a caster and should not be offered a spell list. The
+       subclass has to be consulted too, though - an Eldritch Knight or an
+       Arcane Trickster casts while the class they belong to does not. */
+    var casts = !!c.cls.spellcastingAbility ||
+                !!(c.subclass && (c.subclass.spellcastingAbility ||
+                                  c.subclass.additionalSpells ||
+                                  c.subclass.casterProgression));
+    if (!casts) {
+      host.appendChild(el('div', { class: 'panel' }, [
+        el('p', { class: 'step-sub', style: { marginTop: 0 } }, [
+          c.cls.name + (c.subclass ? ' (' + (c.subclass.shortName || c.subclass.name) + ')' : '') +
+          ' does not cast spells, so there is nothing to choose here.'
+        ]),
+        el('p', { class: 'tiny' }, [
+          'Some subclasses do - an Eldritch Knight or an Arcane Trickster, for ' +
+          'instance. Pick one of those on the class step and this list appears.'
+        ])
+      ]));
+      return;
+    }
+
     var className = c.cls.name;
     var all = FT.get('spell');
     /* Ask the loader, which reads the modern per-class spell lists as well as

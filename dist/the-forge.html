@@ -814,13 +814,16 @@ details > div { padding: 0 8px 8px; }
 
 /* ---- a spell's own words, folded away until asked for ---- */
 .spellwrap { margin: 0 0 4px 6px; }
+/* Just a dot to click. The words "what it does" under every spell was more
+   text than the spells themselves in a long list. */
 .spellwrap > summary {
-  cursor: pointer; font-size: 10px; color: var(--ink-faint);
-  list-style: none; padding: 1px 0;
+  cursor: pointer; list-style: none;
+  width: 16px; height: 14px; line-height: 14px;
+  color: var(--ink-faint); font-size: 11px;
 }
 .spellwrap > summary::-webkit-details-marker { display: none; }
-.spellwrap > summary::before { content: '▸ '; }
-.spellwrap[open] > summary::before { content: '▾ '; }
+.spellwrap > summary::before { content: '▸'; }
+.spellwrap[open] > summary::before { content: '▾'; }
 .spellwrap > summary:hover { color: var(--gold); }
 .spelltext {
   font-size: 11px; color: var(--ink-dim); line-height: 1.45;
@@ -13710,7 +13713,7 @@ details > div { padding: 0 8px 8px; }
   /* A spell's own words, folded away until asked for. */
   function spellText(act) {
     return el('details', { class: 'spellwrap' }, [
-      el('summary', {}, ['what it does']),
+      el('summary', { title: 'What it does' }, []),
       el('div', { class: 'spelltext' }, [act.desc])
     ]);
   }
@@ -16776,6 +16779,28 @@ details > div { padding: 0 8px 8px; }
       host.appendChild(el('div', { class: 'warn-box' }, ['Pick a class first.']));
       return;
     }
+
+    /* A fighter is not a caster and should not be offered a spell list. The
+       subclass has to be consulted too, though - an Eldritch Knight or an
+       Arcane Trickster casts while the class they belong to does not. */
+    var casts = !!c.cls.spellcastingAbility ||
+                !!(c.subclass && (c.subclass.spellcastingAbility ||
+                                  c.subclass.additionalSpells ||
+                                  c.subclass.casterProgression));
+    if (!casts) {
+      host.appendChild(el('div', { class: 'panel' }, [
+        el('p', { class: 'step-sub', style: { marginTop: 0 } }, [
+          c.cls.name + (c.subclass ? ' (' + (c.subclass.shortName || c.subclass.name) + ')' : '') +
+          ' does not cast spells, so there is nothing to choose here.'
+        ]),
+        el('p', { class: 'tiny' }, [
+          'Some subclasses do - an Eldritch Knight or an Arcane Trickster, for ' +
+          'instance. Pick one of those on the class step and this list appears.'
+        ])
+      ]));
+      return;
+    }
+
     var className = c.cls.name;
     var all = FT.get('spell');
     /* Ask the loader, which reads the modern per-class spell lists as well as
