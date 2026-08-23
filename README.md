@@ -19,7 +19,13 @@ and nothing phones home.
 
 There are two extras you can ignore unless you want them: an isometric battle map
 (`dist/virtual-tactics.html`) and **Shopsmith** (`shopsmith/index.html`), a
-desk-sized shop editor for the GM.
+desk-sized shop editor for the GM. Shopsmith also has a **Forge item** tab:
+describe what a magic item does in plain sentences and it becomes a real item
+record — the same shape as the ones in the books, so it works everywhere without
+a special case. It asks the three things prose cannot answer (weapon, armour or
+wondrous; attunement; rarity) and reads the rest; anything it could not place is
+listed back to you and kept as the description rather than silently dropped. Out
+comes a code you paste into a player's sheet, or an item you drop into a shop.
 
 ---
 

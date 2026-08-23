@@ -3022,7 +3022,11 @@
         return String(x.name).toLowerCase() === String(it.name).toLowerCase();
       });
       if (have) have.qty = (have.qty || 1) + qty;
-      else a.inventory.push({ name: it.name, qty: qty, note: it.note || '' });
+      else if (it.item && VT.gear) {
+        /* Comes with its own record, so put it in through the gear path and it
+           arrives wearable, attunable and with its effects already read. */
+        VT.gear.add(a, it.item, { qty: qty, note: it.note || '' });
+      } else a.inventory.push({ name: it.name, qty: qty, note: it.note || '' });
       got.push(qty + ' x ' + it.name);
     });
 

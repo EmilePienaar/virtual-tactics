@@ -87,7 +87,8 @@
   /* ==== render =========================================================== */
   function render() {
     U.clear(work); U.clear(side);
-    ({ shops: renderShops, edit: renderEdit, preview: renderPreview }[S.mode] || renderShops)();
+    ({ shops: renderShops, edit: renderEdit, preview: renderPreview,
+       forge: renderForge }[S.mode] || renderShops)();
     renderSide();
   }
 
@@ -110,6 +111,229 @@
   }
 
   /* ---- shelf ---- */
+  /* ---- forging an item ---------------------------------------------------
+
+     Write what the item does; the readers in itemforge.js turn the shapes the
+     books use into the fields the books use, and say plainly which lines they
+     could not place. The three questions that cannot be guessed from prose -
+     what kind of thing it is, whether it needs attunement, how rare it is - are
+     asked rather than inferred. */
+  var F = { name: '', kind: 'wondrous', rarity: 'uncommon', attune: false,
+            armourWeight: 'light', stealth: false, strength: '',
+            ranged: false, baseDmg: '1d8', baseDmgType: 'slashing',
+            text: '', result: null };
+
+  function renderForge() {
+    work.appendChild(el('h2', { class: 'step' }, ['Forge an item']));
+    work.appendChild(el('p', { class: 'step-sub' }, [
+      'Describe what it does. What comes out is a real item record - the same ' +
+      'shape as the books - so it can go straight into a shop or a player\u2019s pack.'
+    ]));
+
+    var form = el('div', { class: 'panel' }, [el('h3', {}, ['The item'])]);
+    form.appendChild(row('Name', text(F.name, function (v) { F.name = v; })));
+
+    var kinds = [['wondrous', 'Wondrous / ring'], ['weapon', 'Weapon'],
+                 ['armor', 'Armour'], ['shield', 'Shield']];
+    var kindRow = el('div', { class: 'btnrow' });
+    kinds.forEach(function (k) {
+      kindRow.appendChild(el('button', {
+        class: 'btn sm' + (F.kind === k[0] ? ' primary' : ''),
+        onClick: function () { F.kind = k[0]; F.result = null; render(); }
+      }, [k[1]]));
+    });
+    form.appendChild(row('Kind', kindRow, true));
+
+    if (F.kind === 'armor') {
+      var wRow = el('div', { class: 'btnrow' });
+      ['light', 'medium', 'heavy'].forEach(function (w) {
+        wRow.appendChild(el('button', {
+          class: 'btn sm' + (F.armourWeight === w ? ' primary' : ''),
+          onClick: function () { F.armourWeight = w; F.result = null; render(); }
+        }, [U.cap(w)]));
+      });
+      form.appendChild(row('Weight', wRow, true));
+      form.appendChild(row('Stealth', el('button', {
+        class: 'btn sm' + (F.stealth ? ' primary' : ''),
+        onClick: function () { F.stealth = !F.stealth; F.result = null; render(); }
+      }, [F.stealth ? 'Disadvantage' : 'No penalty'])));
+      form.appendChild(row('Min STR', text(F.strength, function (v) { F.strength = v; })));
+    }
+    if (F.kind === 'weapon') {
+      form.appendChild(row('Reach', el('button', {
+        class: 'btn sm' + (F.ranged ? ' primary' : ''),
+        onClick: function () { F.ranged = !F.ranged; F.result = null; render(); }
+      }, [F.ranged ? 'Ranged' : 'Melee'])));
+      /* Asked, not inferred: a die in the description is nearly always the
+         rider rather than the weapon's own damage. */
+      form.appendChild(row('Base damage',
+        text(F.baseDmg, function (v) { F.baseDmg = v; }, 'e.g. 1d8')));
+      var dtRow = el('div', { class: 'btnrow' });
+      ['slashing', 'piercing', 'bludgeoning'].forEach(function (d) {
+        dtRow.appendChild(el('button', {
+          class: 'btn sm' + (F.baseDmgType === d ? ' primary' : ''),
+          onClick: function () { F.baseDmgType = d; F.result = null; render(); }
+        }, [U.cap(d)]));
+      });
+      form.appendChild(row('Damage type', dtRow, true));
+    }
+
+    var rarities = ['common', 'uncommon', 'rare', 'very rare', 'legendary', 'artifact'];
+    var rRow = el('div', { class: 'btnrow' });
+    rarities.forEach(function (r) {
+      rRow.appendChild(el('button', {
+        class: 'btn sm' + (F.rarity === r ? ' primary' : ''),
+        onClick: function () { F.rarity = r; F.result = null; render(); }
+      }, [U.cap(r)]));
+    });
+    form.appendChild(row('Rarity', rRow, true));
+
+    form.appendChild(row('Attunement', el('button', {
+      class: 'btn sm' + (F.attune ? ' primary' : ''),
+      onClick: function () { F.attune = !F.attune; F.result = null; render(); }
+    }, [F.attune ? 'Requires attunement' : 'No attunement'])));
+
+    work.appendChild(form);
+
+    /* the description */
+    var desc = el('div', { class: 'panel' }, [el('h3', {}, ['What it does'])]);
+    var box = el('textarea', {
+      rows: 9, value: F.text,
+      placeholder: 'One effect per line. Press "Show me the shapes" for what it can read.',
+      onInput: function (e) { F.text = e.target.value; }
+    });
+    desc.appendChild(box);
+    desc.appendChild(el('div', { class: 'btnrow' }, [
+      btn('Forge it', function () {
+        F.result = VT.itemforge.forge(F.text, {
+          name: F.name, kind: F.kind, rarity: F.rarity, attunement: F.attune,
+          armourWeight: F.armourWeight, stealth: F.stealth,
+          strength: F.strength ? parseInt(F.strength, 10) : 0,
+          ranged: F.ranged,
+          baseDmg: F.baseDmg, baseDmgType: F.baseDmgType
+        });
+        render();
+      }, 'sm primary'),
+      btn('Show me the shapes', function () {
+        F.text = VT.itemforge.TEMPLATE; F.result = null; render();
+      }, 'sm'),
+      btn('Clear', function () { F.text = ''; F.result = null; render(); }, 'sm')
+    ]));
+    work.appendChild(desc);
+
+    if (F.result) work.appendChild(forgeResult());
+    renderForgeSide();
+  }
+
+  /* What it understood, what it did not, and the code to carry it away. */
+  function forgeResult() {
+    var r = F.result, it = r.item;
+    var card = el('div', { class: 'panel' }, [el('h3', {}, ['What came out'])]);
+
+    var fx = VT.itemfx.effectsOf(it);
+    var slot = VT.gear.slotOf(it);
+    card.appendChild(el('div', { class: 'ok' }, [
+      it.name + '  ·  ' + it.rarity +
+      (it.reqAttune ? '  ·  requires attunement' : '') +
+      (slot ? '  ·  worn as ' + slot : '')
+    ]));
+    if (fx) card.appendChild(el('div', { class: 'hint' }, ['Effects: ' + VT.itemfx.describe(fx)]));
+    if (it.dmg1) card.appendChild(el('div', { class: 'hint' }, ['Damage: ' + it.dmg1 + ' ' + it.dmgType]));
+    if (it.ac) card.appendChild(el('div', { class: 'hint' }, ['Base AC: ' + it.ac]));
+    if (r.action) {
+      card.appendChild(el('div', { class: 'hint' }, [
+        'Action read: ' + r.action.name + ' ' + r.action.kind + ' ' + (r.action.dmg || '') +
+        (r.action.dc ? ' DC' + r.action.dc : '')
+      ]));
+    }
+
+    if (r.read.length) {
+      card.appendChild(el('div', { class: 'hint', style: { marginTop: '6px' } }, ['Read:']));
+      r.read.forEach(function (line) {
+        card.appendChild(el('div', { class: 'tiny' }, ['\u2713 ' + line]));
+      });
+    }
+    if (r.unread.length) {
+      card.appendChild(el('div', { class: 'warn-box', style: { marginTop: '8px' } }, [
+        'Kept as description, but not turned into anything mechanical:'
+      ]));
+      r.unread.forEach(function (line) {
+        card.appendChild(el('div', { class: 'tiny' }, ['\u2022 ' + line]));
+      });
+    }
+
+    /* the code */
+    var code = VT.shops.lootCode({ from: 'Shopsmith', items: [
+      { name: it.name, qty: 1, note: it.rarity + (it.reqAttune ? ', attunement' : ''), item: it }
+    ] });
+    var ta = el('textarea', { class: 'lootcode', rows: 3, readonly: true, value: code });
+    ta.addEventListener('focus', function () { ta.select(); });
+    ta.addEventListener('click', function () { ta.select(); });
+    card.appendChild(el('div', { class: 'hint', style: { marginTop: '8px' } }, [
+      'Paste this into a player\u2019s Tale Sheet, under Collect. Click the box to select it.'
+    ]));
+    card.appendChild(ta);
+
+    card.appendChild(el('div', { class: 'btnrow' }, [
+      btn('Copy code', function () {
+        ta.select();
+        var done = function (ok) { alertLine(card, ok ? 'Copied.' : 'Could not reach the clipboard - select the box and press Ctrl+C.'); };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(code).then(function () { done(true); }, function () { done(false); });
+        } else { done(false); }
+      }, 'sm primary'),
+      btn('Add to the selected shop', function () {
+        var shop = selected();
+        if (!shop) { alertLine(card, 'No shop selected - pick one on the Shops tab.'); return; }
+        shop.items.push({ id: U.uid('g'), name: it.name, source: 'HB',
+                          note: it.rarity, price: 0, qty: 1, item: it });
+        save();
+        alertLine(card, 'Added to ' + shop.name + '. Set its price on the Edit tab.');
+      }, 'sm'),
+      btn('Download JSON', function () {
+        var blob = new Blob([JSON.stringify(it, null, 1)], { type: 'application/json' });
+        var a2 = document.createElement('a');
+        a2.href = URL.createObjectURL(blob);
+        a2.download = String(it.name).replace(/[^\w-]+/g, '_') + '.item.json';
+        document.body.appendChild(a2); a2.click();
+        setTimeout(function () { URL.revokeObjectURL(a2.href); a2.remove(); }, 400);
+      }, 'sm')
+    ]));
+    return card;
+  }
+
+  function alertLine(host, msg) {
+    var old = host.querySelector('.forge-say');
+    if (old) old.remove();
+    host.appendChild(el('div', { class: 'ok forge-say' }, [msg]));
+  }
+
+  function renderForgeSide() {
+    side.appendChild(el('div', { class: 'sec' }, [
+      el('div', { class: 'sec-h' }, ['How to write it']),
+      el('div', { class: 'sec-b' }, [
+        el('p', { class: 'tiny' }, [
+          'One effect per line, in the words the books use. It reads these:'
+        ]),
+        el('ul', { class: 'tiny' }, [
+          el('li', {}, ['"+1 bonus to attack and damage rolls"']),
+          el('li', {}, ['"+1 bonus to AC" / "to saving throws"']),
+          el('li', {}, ['"+1 bonus to spell attack rolls" / "spell save DC"']),
+          el('li', {}, ['"You have resistance to fire damage"']),
+          el('li', {}, ['"Your Strength score becomes 19"']),
+          el('li', {}, ['"Your walking speed increases by 10 feet"']),
+          el('li', {}, ['"It has 3 charges and regains 1d3 at dawn"']),
+          el('li', {}, ['"An extra 2d6 fire damage on a hit"']),
+          el('li', {}, ['"DC 15 Dexterity saving throw, 4d6 fire damage"'])
+        ]),
+        el('p', { class: 'tiny' }, [
+          'Anything else is kept as the item\u2019s description and listed back to ' +
+          'you, so nothing is silently dropped.'
+        ])
+      ])
+    ]));
+  }
+
   function renderShops() {
     work.appendChild(el('h2', { class: 'step' }, ['Your shops']));
     work.appendChild(el('p', { class: 'step-sub' }, [

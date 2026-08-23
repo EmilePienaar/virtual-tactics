@@ -6892,6 +6892,11 @@ details > div { padding: 0 8px 8px; }
       .map(function (i) {
         var o = { name: String(i.name), qty: Math.max(1, i.qty | 0) || 1 };
         if (i.note) o.note = String(i.note);
+        /* A forged or magic item carries its own record, so it arrives on the
+           other sheet as the thing it is rather than a name in a list - with
+           its AC, its resistances and whatever it sets. Only sent when there
+           is one, so an ordinary rope stays two fields long. */
+        if (i.item) o.item = i.item;
         return o;
       });
     if (items.length) out.items = items;
@@ -15447,7 +15452,11 @@ details > div { padding: 0 8px 8px; }
         return String(x.name).toLowerCase() === String(it.name).toLowerCase();
       });
       if (have) have.qty = (have.qty || 1) + qty;
-      else a.inventory.push({ name: it.name, qty: qty, note: it.note || '' });
+      else if (it.item && VT.gear) {
+        /* Comes with its own record, so put it in through the gear path and it
+           arrives wearable, attunable and with its effects already read. */
+        VT.gear.add(a, it.item, { qty: qty, note: it.note || '' });
+      } else a.inventory.push({ name: it.name, qty: qty, note: it.note || '' });
       got.push(qty + ' x ' + it.name);
     });
 

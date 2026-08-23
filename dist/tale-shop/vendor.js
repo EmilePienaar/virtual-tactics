@@ -5905,6 +5905,11 @@
       .map(function (i) {
         var o = { name: String(i.name), qty: Math.max(1, i.qty | 0) || 1 };
         if (i.note) o.note = String(i.note);
+        /* A forged or magic item carries its own record, so it arrives on the
+           other sheet as the thing it is rather than a name in a list - with
+           its AC, its resistances and whatever it sets. Only sent when there
+           is one, so an ordinary rope stays two fields long. */
+        if (i.item) o.item = i.item;
         return o;
       });
     if (items.length) out.items = items;
