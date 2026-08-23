@@ -263,8 +263,13 @@ else needs Node at all.
 There's no build step otherwise — plain `<script>` tags and one `window.VT`
 namespace, deliberately, so it runs from a plain file with no toolchain.
 
-Longer explanations of how each piece works live in
-[docs/design-notes.md](docs/design-notes.md).
+Two documents carry the rest:
+
+- **[docs/state-of-things.md](docs/state-of-things.md)** — what is solid, what is
+  half-finished, and the traps that have already cost debugging time. Read this
+  first if you are picking the project up cold.
+- **[docs/design-notes.md](docs/design-notes.md)** — how each piece works and why
+  it is built that way.
 
 ---
 

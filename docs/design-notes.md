@@ -1186,6 +1186,158 @@ differently, and it survives a level-up.
 
 ---
 
+## What a magic item does to you
+
+An attuned Belt of Hill Giant Strength used to be a line in a list that did not
+touch Strength, which is the entire item. The data carries all of it in
+structured fields, so `rules/itemfx.js` reads rather than guesses:
+
+    ability:      { static: { str: 21 } }      74 items
+    bonusAc:      "+1"                        267 items
+    resist:       ["fire"]                    361 items
+    modifySpeed:  { multiply: { walk: 2 } }   121 items
+    attachedSpells: { charges: { "1": ["magic missile"] } }   524 items
+    charges: 7                              1,157 items
+
+**When an item counts** is the other half of the question, and the answer is the
+same for every effect: one that requires attunement does nothing until attuned,
+anything else has to be worn or held. A wand in your pack is not a wand in your
+hand. That single rule governs ability scores, AC, resistances *and* the actions
+a wand grants, which is why attuning a Wand of Fireballs makes Fireball appear
+in the action list and unattuning it takes it away again.
+
+### Two ordering traps
+
+Ability scores are applied **before** AC is worked out, because an item that
+sets Dexterity changes the armour class about to be derived from it.
+
+And scores are recomputed from a stored `baseAbilities` rather than mutated,
+because `features.apply()` runs again every time something is equipped. The same
+lesson as `baseSpeed`: anything the pass computes must be recomputed from a
+base, never accumulated. The version that did not do this stacked a belt with
+itself.
+
+`+1 Plate Armor` carries both `ac: 19` and `bonusAc: "+1"` — the books state the
+total — so an armour's own bonus is deliberately ignored when it is worn.
+
+---
+
+## Where resistances come from
+
+Three sources, behaving differently, which is why `rules/resist.js` gathers all
+of them rather than leaving three scattered checks:
+
+- **race** — structured data, 43 races and 8 subraces. A few say "choose one";
+  a dragonborn's ancestry answers it, or it is listed as still to choose.
+- **features** — English in the text. Fifty features mention resistance and only
+  twenty-one are permanent; the rest are Rage, Bear Totem and other things you
+  switch on.
+- **items** — read by `itemfx`, merged here.
+
+Applying the conditional ones passively would make a barbarian permanently
+resistant to nearly everything, so they are listed as reminders instead. The
+same line is drawn at *qualified* resistances: "resistance to fire" is a fact
+about the character; "resistance to bludgeoning, piercing and slashing **from
+nonmagical attacks**" is narrower than a chip can say, so it is quoted rather
+than claimed. **A sheet that overstates a defence gets somebody killed.**
+
+Bear Totem needed particular care. Its text is "resistance to all damage
+*except* psychic", so listing the damage types found in that clause said the
+exact opposite of what the feature does. Inverted clauses are quoted whole.
+
+`itemfx` writes to `actor.itemResist`, not `actor.resist` — writing to the
+latter would have erased a tiefling's fire resistance the moment they picked up
+any magic item.
+
+---
+
+## Summoning: three shapes, one reader
+
+Only sixteen spells have a creature that names them back
+(`summonedBySpell: "Summon Beast|TCE"`). Handling only those was why Find
+Familiar and every Conjure spell did nothing — it was never about which class
+was casting. The other two shapes are just as readable:
+
+| shape | how the book says it |
+| --- | --- |
+| **block** | a creature points back at the spell |
+| **named** | `{@creature bat}`, `{@creature skeleton}` in the text |
+| **filtered** | `{@filter beast of challenge rating 2 or lower\|bestiary\|challenge rating=[&0;&2]\|type=beast\|miscellaneous=!swarm}` |
+
+Spells are found by the books' own `SMN` tag. A spell that offers a list puts
+the list on screen; Find Familiar offers 15, Conjure Minor Elementals 36.
+
+The scaling ones are the difficulty. Their numbers are not numbers — they are
+English:
+
+    ac: [{ special: "11 + the level of the spell (natural armor)" }]
+    hp: { special: "20 (Air only) or 30 (Land and Water only) + 5 for each spell level above 2nd" }
+
+`convert.creature` reads the leading digits and stops, which gives a summon **5
+hit points**. The attack is worse: `{@hitYourSpellAttack}` cannot become a
+number without knowing the caster, so it arrives with no attack roll at all.
+Both are resolved where the caster is known.
+
+The *choice* of form is not a separate stat block per shape — it is those
+`(X Only)` tags on traits, speeds, actions and the hit point formula, so
+choosing a form means keeping the lines that match it.
+
+> **The bug worth remembering:** splitting `"Land and Water"` on a bare `and`
+> also splits the word **L-and**, so the Land form never matched and every Land
+> summon silently took the wrong hit point branch. It needs a word boundary.
+
+---
+
+## Forging an item from a description
+
+`data/itemforge.js` turns written sentences into a record shaped exactly like
+the ones in the books — which is the whole point. `gear.js` reads its type and
+AC, `itemfx` reads its effects, `convert` reads its damage, `featureText` reads
+an action out of its prose. A forged item is a real item from the first moment
+and needs no special case anywhere downstream.
+
+Four things are asked rather than inferred, because prose cannot answer them
+reliably: what kind of thing it is, whether it needs attunement, how rare it is,
+and — for a weapon — its base damage.
+
+That last one matters more than it looks. Scanning the description for a die
+finds the **rider**: a blade described as dealing "an extra 2d6 fire damage"
+came out as a 2d6 *fire* weapon that also dealt 2d6 fire. The same mistake in a
+second place made the item's action read the rider's die instead of the one in
+the sentence describing the action.
+
+Anything the readers cannot place is listed back to whoever wrote it and kept as
+the description. **A homebrew item that silently loses half its text is worse
+than one that says which two lines it did not read.**
+
+---
+
+## Small corrections worth recording
+
+**`autoHit` was honoured only in the sheets' display.** The battle map rolled a
+Dexterity save against Magic Missile and applied half damage. `convert.js`
+models auto-hit spells as a save because the engine has no "just hits" kind, and
+marks them `autoHit`; honouring that mark is the other side of that bargain. The
+map also now rolls the damage once per dart.
+
+**"blessed" was the default condition for every buff spell** whose text named
+none — so it landed on most of the spell list. It is this engine's marker for
+Bless's +1d4, not a catch-all. Bane was missing entirely and is now its mirror.
+
+**Class spell lists.** The sheet said "no class list, so allow it", and most
+spells in newer books do not carry `fromClassList` at all — which is how a
+wizard could prepare *cure wounds*. Both apps now use `FT.spellsForClass`. The
+Forge separately offered a spell step to fighters and barbarians, having no
+casting check at all; it now consults the subclass too, since an Eldritch Knight
+casts while a fighter does not.
+
+**Prepared spells for the 2014 classes.** `spellCounts` returned early once it
+found cantrips, and the 2014 classes state their count as a formula nothing read
+— `"<$level$> + <$wis_mod$>"`. Their 2024 versions worked because those use an
+array. Same class, same level, different book, silently different sheet.
+
+---
+
 ## Rules implemented
 
 Attack rolls, damage and criticals (dice double, modifiers don't), advantage and
