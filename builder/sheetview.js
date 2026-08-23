@@ -313,14 +313,14 @@
      likes and this just runs again. */
   var GROUPS = [
     { key: 'play',  label: 'Play',
-      match: /^(abilities|skills|tools|actions|custom roll|conditions|wild shape|resources)$|^$/i },
+      match: /^(abilities|skills|tools|actions|custom roll|conditions|wild shape|companion|resources)$|^$/i },
     /* Spells are their own section rather than a general "magic" one: the
        slots now sit inside the spell list, so there is nothing else left for a
        magic section to hold. */
     { key: 'spells', label: 'Spells',
       match: /^(spells|spell slots|pact magic)/i },
     { key: 'gear',  label: 'Gear',
-      match: /^(coin|inventory|attunement|collect from)/i },
+      match: /^(coin|inventory|equipment|attunement|collect from)/i },
     { key: 'about', label: 'Character',
       match: /^(features|choices|details|rest|notes|ability score|proficiencies)/i }
   ];
@@ -342,6 +342,10 @@
     /* The first card is the character themself - name, AC, HP, the hit point
        bar - and has no heading. It belongs with Play whatever else happens. */
     if (index === 0) return 'play';
+    /* An assumed form or a companion is titled with the creature's name, which
+       no heading rule can match - "Brown Bear" and "Beast of the Land" are not
+       words this file can know. They carry a class instead, which is stable. */
+    if (card.classList && card.classList.contains('wildshape')) return 'play';
     var h = headingOf(card);
     for (var i = 0; i < GROUPS.length; i++) {
       if (GROUPS[i].match.test(h)) return GROUPS[i].key;

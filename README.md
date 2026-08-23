@@ -96,6 +96,15 @@ Day to day:
 - **Resources** — Ki, Rage, Bardic Inspiration, Channel Divinity,
   Superiority Dice, Lay on Hands, Action Surge. Short and long rests restore the
   right ones; a short rest lets you spend hit dice, which roll in the tray.
+- **Equipment is worn, not welded on.** Armour, shields and weapons sit in your
+  inventory with a Wear button, so you can take the mail off before sneaking and
+  put it back without losing it. Heavy and medium armour give disadvantage on
+  Stealth, armour you lack the Strength for costs 10 feet, and both stop a
+  monk's Unarmored Movement and a barbarian's Fast Movement.
+- **The ranger's companion** works like Wild Shape: pick the animal and its stat
+  block appears below yours with its own hit points. Beast Master gets both the
+  Primal Companions and the 2014 beast list; Drakewarden gets the drake. The
+  scaling ones work their AC, hit points and attacks out from your ranger level.
 - **Wild Shape** lists the beasts you can become, filtered by your druid level,
   and shows the chosen form's stat block below your own — its AC, hit points,
   speed and attacks, all rollable. Its hit points are tracked separately, and

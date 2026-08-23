@@ -4392,6 +4392,23 @@ input[type=range]{width:100%;accent-color:var(--gold)}
         var second = /monk/i.test(cls || '') ? 'wis' : 'con';
         return 10 + mod(a, 'dex') + mod(a, second);
       }, note: 'While wearing no armour.' },
+    /* The permanently-on speed features. Most features that mention speed are
+       activated - Bladesong, Dread Ambusher, Blade Flourish - and would be
+       wrong applied passively, so they are deliberately not here. */
+    'superior mobility': { cls: 'rogue', speedBonus: function () { return 10; },
+      note: 'Climbing and swimming speeds increase too.' },
+    'roving': { cls: 'ranger', speedBonus: function (a) {
+        /* 2024 wording: only while not in heavy armour. */
+        if (VT.gear && VT.gear.wearingHeavy(a)) return 0;
+        return 10;
+      }, note: 'While not wearing heavy armour. Climb and swim speeds match your walking speed.' },
+    'deft explorer improvement': { cls: 'ranger', speedBonus: function () { return 5; },
+      note: 'Climbing and swimming speeds equal your walking speed.' },
+
+    'fast movement': { speedBonus: function (a) {
+        if (VT.gear && VT.gear.wearingHeavy(a)) return 0;
+        return 10;
+      }, note: 'While not wearing heavy armour.' },
     'brutal critical': { note: 'Roll one extra weapon damage die on a critical hit.' },
 
     /* --- Bard --- */
@@ -4462,6 +4479,9 @@ input[type=range]{width:100%;accent-color:var(--gold)}
                   desc: 'Bonus action unarmed strike when you attack with a monk weapon.' }];
       } },
     'unarmored movement': { speedBonus: function (a) {
+        /* The name is the rule. Applying it in plate was making a monk in full
+           armour the fastest thing on the board. */
+        if (VT.gear && (VT.gear.wearingArmour(a) || VT.gear.wearingShield(a))) return 0;
         return byLevel([[2, 10], [6, 15], [10, 20], [14, 25], [18, 30]], lvl(a));
       }, note: 'While wearing no armour and no shield.' },
     'stunning strike': { note: 'Spend 1 ki: the target makes a CON save or is stunned.' },
@@ -4661,7 +4681,14 @@ input[type=range]{width:100%;accent-color:var(--gold)}
       actor.slotsUsed = {};
     }
 
-    if (actor.speedBonus) actor.speed = (actor.speed || 30) + actor.speedBonus;
+    /* Speed is RECOMPUTED from the base rather than adjusted in place. This
+       pass runs again every time armour is put on or taken off, and adding the
+       bonus to whatever was already there compounded it every time - a
+       barbarian who equipped and unequipped plate twice ended up at zero. */
+    if (actor.baseSpeed == null) actor.baseSpeed = actor.speed || 30;
+    var drag = VT.gear ? VT.gear.speedPenalty(actor) : 0;
+    actor.speed = Math.max(0, actor.baseSpeed + (actor.speedBonus || 0) - drag);
+    actor.speedNote = drag ? 'slowed 10 ft by armour' : null;
 
     /* Feature actions go in after gear and spells, and never duplicate. */
     var have = {};
@@ -5319,6 +5346,223 @@ input[type=range]{width:100%;accent-color:var(--gold)}
   };
 })();
 
+/* ===== src/data/companion.js ===== */
+/* Virtual Tactics :: data/companion.js
+   The ranger's animal, and what its numbers actually are.
+
+   Built the same way as Wild Shape: the companion is a separate stat block
+   shown beside the sheet rather than anything folded into the character, so
+   swapping animals is replacing one object and dismissing one is deleting it.
+
+   Three different things are called a companion, and they do not work alike:
+
+     Beast Master (2014)   any beast of CR 1/4 or lower, Medium or smaller,
+                           straight out of the bestiary
+     Primal Companion      Beast of the Land / Sea / Sky - fixed stat blocks
+       (Tasha's, 2024)     that scale with ranger level
+     Drakewarden           a single Drake Companion, also scaling
+
+   The scaling ones are the reason this file exists. Their AC and hit points are
+   not numbers in the data - they are English:
+
+     ac: [{ special: "13 + PB (natural armor)" }]
+     hp: { special: "5 + five times your ranger level" }
+
+   convert.creature reads the leading digits and stops, which gives a companion
+   5 hit points. Resolving those two sentences against the ranger they belong to
+   is most of what this does. */
+(function () {
+  'use strict';
+  var VT = window.VT, U = VT.util;
+
+  var WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7,
+                eight: 8, nine: 9, ten: 10 };
+
+  /* ---- whose companion is it -------------------------------------------- */
+
+  function rangerLevel(actor) {
+    var n = 0;
+    (actor.classes || []).forEach(function (c) {
+      if (/ranger/i.test(c.name || '')) n = Math.max(n, c.level || 0);
+    });
+    if (!n && /ranger/i.test(actor.className || '')) n = actor.level || 0;
+    return n;
+  }
+
+  function subclassOf(actor) {
+    var found = null;
+    (actor.classes || []).forEach(function (c) {
+      if (/ranger/i.test(c.name || '') && c.subclass) {
+        found = c.subclass.shortName || c.subclass.name;
+      }
+    });
+    if (!found && /ranger/i.test(actor.className || '')) {
+      var m = String(actor.className).match(/\(([^)]+)\)/);
+      if (m) found = m[1];
+    }
+    return found;
+  }
+
+  /* Which flavour of companion this character gets, or null for none. */
+  function kind(actor) {
+    var lvl = rangerLevel(actor);
+    if (!lvl) return null;
+    var sub = String(subclassOf(actor) || '');
+    if (/drakewarden/i.test(sub)) return lvl >= 3 ? 'drake' : null;
+    if (/beast\s*master/i.test(sub)) {
+      if (lvl < 3) return null;
+      /* Tasha's replaced the 2014 companion with the Primal ones, and the 2024
+         book made that the only version. Offer both lists rather than guessing
+         which one a table is using - the beasts are still legal at any table
+         playing the older feature. */
+      return 'beastmaster';
+    }
+    return null;
+  }
+
+  /* ---- the choices ------------------------------------------------------- */
+
+  var PRIMAL = ['Beast of the Land', 'Beast of the Sea', 'Beast of the Sky'];
+
+  function creature(name) {
+    var FT = VT.fivetools;
+    if (!FT || !FT.get) return null;
+    return (FT.get('creature') || []).find(function (m) { return m.name === name; }) || null;
+  }
+
+  /* Beasts a 2014 Beast Master may take: CR 1/4 or lower, Medium or smaller. */
+  function classicBeasts(actor, opts) {
+    opts = opts || {};
+    var FT = VT.fivetools;
+    if (!FT || !FT.get) return [];
+    var WS = VT.wildshape;
+    return (FT.get('creature') || []).filter(function (m) {
+      if (!/beast/i.test(VT.convert.typeOf(m) || '')) return false;
+      if (opts.all) return true;
+      var cr = WS.crNumber(VT.convert.crOf(m));
+      if (cr == null || cr > 0.25) return false;
+      var size = Array.isArray(m.size) ? m.size[0] : m.size;
+      return ['T', 'S', 'M'].indexOf(size) >= 0;
+    }).sort(function (a, b) {
+      var d = (WS.crNumber(VT.convert.crOf(a)) || 0) - (WS.crNumber(VT.convert.crOf(b)) || 0);
+      return d || String(a.name).localeCompare(String(b.name));
+    });
+  }
+
+  /* Everything this character may choose, grouped so the two Beast Master
+     versions do not look like one confusing list. */
+  function options(actor, opts) {
+    var k = kind(actor);
+    if (!k) return [];
+    if (k === 'drake') {
+      var d = creature('Drake Companion');
+      return d ? [{ group: 'Drakewarden', list: [d] }] : [];
+    }
+    var out = [];
+    var primal = PRIMAL.map(creature).filter(Boolean);
+    if (primal.length) out.push({ group: 'Primal Companion', list: primal });
+    var classic = classicBeasts(actor, opts);
+    if (classic.length) out.push({ group: 'Beast (2014 Ranger’s Companion)', list: classic });
+    return out;
+  }
+
+  /* ---- resolving the prose ----------------------------------------------- */
+
+  /* "13 + PB (natural armor)" -> 13 + the ranger's proficiency bonus. */
+  function specialAC(mon, prof) {
+    var entry = Array.isArray(mon.ac) ? mon.ac[0] : mon.ac;
+    var text = entry && entry.special;
+    if (!text) return null;
+    var m = String(text).match(/(\d+)\s*\+\s*PB/i);
+    return m ? parseInt(m[1], 10) + prof : null;
+  }
+
+  /* "5 + five times your ranger level" -> 5 + 5 x level. */
+  function specialHP(mon, level) {
+    var text = mon.hp && mon.hp.special;
+    if (!text) return null;
+    var m = String(text).match(/(\d+)\s*\+\s*([a-z]+|\d+)\s+times your/i);
+    if (!m) return null;
+    var per = WORDS[String(m[2]).toLowerCase()];
+    if (per == null) per = parseInt(m[2], 10);
+    if (isNaN(per)) return null;
+    return parseInt(m[1], 10) + per * level;
+  }
+
+  /* Build the block to sit beside the sheet, with the owner's numbers folded
+     in. Anything that could not be resolved is left as the data had it and
+     said out loud, rather than quietly guessed at. */
+  function assume(mon, actor) {
+    var block = VT.convert.creature(mon, { team: 'party' });
+    var level = rangerLevel(actor);
+    var prof = VT.actor.prof(actor);
+    var notes = [];
+
+    var ac = specialAC(mon, prof);
+    var hp = specialHP(mon, level);
+    var scaling = !!(ac || hp);
+
+    if (ac) block.ac = ac;
+    if (hp) { block.hpMax = hp; block.hp = hp; }
+    if (scaling && !ac) notes.push('AC could not be read from the stat block.');
+    if (scaling && !hp) notes.push('Hit points could not be read from the stat block.');
+
+    /* A scaling companion attacks with the RANGER's numbers, and the stat
+       block says so in prose the converter cannot turn into a number:
+
+         {@atk mw} {@hitYourSpellAttack} to hit ... {@damage 1d8 + 2 + PB}
+
+       Unresolved, that comes out as an ability with no attack roll and a
+       proficiency bonus guessed at 2 - so a level 8 companion hits for one
+       less than it should and cannot be rolled to hit at all. Both halves are
+       fixable here, where the owner is known. */
+    var actions = (block.actions || []).map(function (x) { return U.clone(x); });
+    if (scaling) {
+      var spellAtk = actor.spellAttack != null
+        ? actor.spellAttack
+        : prof + VT.actor.abilityMod(actor, 'wis');
+      actions.forEach(function (act) {
+        var raw = act.dmgRaw || act.dmg || '';
+        if (/\bPB\b/.test(raw)) {
+          act.dmg = String(raw).replace(/\bPB\b/g, String(prof));
+          delete act.variable;
+        }
+        if (/spell attack modifier/i.test(act.desc || '')) {
+          act.kind = /ranged/i.test(act.desc || '') ? 'ranged' : 'melee';
+          act.toHit = spellAtk;
+          if (!act.range) act.range = act.kind === 'ranged' ? [80, 320] : [5, 5];
+        }
+      });
+    }
+
+    return {
+      name: block.name,
+      source: block.source || null,
+      size: block.size || 'medium',
+      kind: kind(actor),
+      scaling: scaling,
+      cr: VT.wildshape.crNumber(block.cr),
+      ac: block.ac,
+      hp: block.hp,
+      hpMax: block.hpMax,
+      speed: block.speed,
+      senses: block.senses || '',
+      abilities: block.abilities,
+      actions: actions,
+      notes: block.notes || '',
+      warnings: notes,
+      ownerLevel: level,
+      at: Date.now()
+    };
+  }
+
+  VT.companion = {
+    kind: kind, rangerLevel: rangerLevel, subclassOf: subclassOf,
+    options: options, classicBeasts: classicBeasts, assume: assume,
+    specialAC: specialAC, specialHP: specialHP
+  };
+})();
+
 /* ===== src/rules/actor.js ===== */
 /* Virtual Tactics :: rules/actor.js
    Actor construction and the derived numbers combat asks for. An "actor" is a
@@ -5658,6 +5902,196 @@ input[type=range]{width:100%;accent-color:var(--gold)}
     speedOf: speedOf, effectiveAC: effectiveAC, acSources: acSources, canAct: canAct, hasCond: hasCond, addCond: addCond, removeCond: removeCond,
     resetTurn: resetTurn, usesLeft: usesLeft, spendUse: spendUse,
     applyDamage: applyDamage, healBy: healBy, portrait: portrait
+  };
+})();
+
+/* ===== src/rules/gear.js ===== */
+/* Virtual Tactics :: rules/gear.js
+   What a character is wearing, and what that costs them.
+
+   Armour used to be picked once at build time and then only existed as a name
+   and an AC number. That made three things impossible: seeing your armour in
+   your inventory, taking it off without deleting it, and applying the penalties
+   that come with wearing it. All three are the same missing idea - equipment is
+   a thing you own that may or may not be worn right now.
+
+   So an inventory entry can carry a `gear` record and an `equipped` flag, and
+   everything else is derived from what is equipped. Taking off plate is
+   unsetting a boolean; the plate is still in the bag.
+
+   The penalties are the part that was quietly missing. Heavy armour gives
+   disadvantage on Stealth, and wearing armour heavier than your Strength can
+   support costs you 10 feet of speed - and a monk's Unarmored Movement and a
+   barbarian's Fast Movement both stop applying, which is the whole reason those
+   features say "unarmoured" in their names. */
+(function () {
+  'use strict';
+  var VT = window.VT, U = VT.util, SRD = VT.srd;
+
+  /* 5etools types: HA heavy, MA medium, LA light, S shield. */
+  var ARMOUR = { HA: 'heavy', MA: 'medium', LA: 'light' };
+
+  function baseType(item) {
+    return String((item && item.type) || '').split('|')[0];
+  }
+
+  /* Which slot an item occupies, or null if it is not something you wear. */
+  function slotOf(item) {
+    var t = baseType(item);
+    if (ARMOUR[t]) return 'armor';
+    if (t === 'S') return 'shield';
+    if (item && (item.weaponCategory || t === 'M' || t === 'R')) return 'weapon';
+    return null;
+  }
+
+  /* The compact record kept on an inventory entry. Deliberately a copy of the
+     few fields that matter rather than the whole item: this is saved with the
+     character and rides through the symbiote's 500-byte sync budget. */
+  function fromItem(item) {
+    var slot = slotOf(item);
+    if (!slot) return null;
+    var g = { slot: slot };
+    var t = baseType(item);
+    if (slot === 'armor') {
+      g.weight = ARMOUR[t];                       /* heavy | medium | light */
+      g.ac = item.ac || 10;
+      if (item.stealth) g.stealth = true;         /* disadvantage while worn */
+      if (item.strength) g.strength = parseInt(item.strength, 10) || 0;
+    } else if (slot === 'shield') {
+      g.ac = item.ac || 2;
+    }
+    return g;
+  }
+
+  function entries(actor) {
+    return (actor && actor.inventory) || [];
+  }
+
+  function equippedIn(actor, slot) {
+    return entries(actor).filter(function (e) {
+      return e.equipped && e.gear && e.gear.slot === slot;
+    })[0] || null;
+  }
+
+  function armour(actor) { return equippedIn(actor, 'armor'); }
+  function shield(actor) { return equippedIn(actor, 'shield'); }
+
+  /* Wearing something takes off whatever was in that slot. You cannot wear two
+     breastplates, and a sheet that lets you is worse than one that does not. */
+  function equip(actor, entry) {
+    if (!entry || !entry.gear) return false;
+    entries(actor).forEach(function (e) {
+      if (e !== entry && e.equipped && e.gear && e.gear.slot === entry.gear.slot) {
+        e.equipped = false;
+      }
+    });
+    entry.equipped = true;
+    recompute(actor);
+    return true;
+  }
+
+  function unequip(actor, entry) {
+    if (!entry) return false;
+    entry.equipped = false;
+    recompute(actor);
+    return true;
+  }
+
+  function toggle(actor, entry) {
+    return entry.equipped ? unequip(actor, entry) : equip(actor, entry);
+  }
+
+  /* ---- what being dressed costs ----------------------------------------- */
+
+  /* Disadvantage on Stealth, from the armour itself. */
+  function stealthDisadvantage(actor) {
+    var a = armour(actor);
+    return !!(a && a.gear && a.gear.stealth);
+  }
+
+  /* Armour you are not strong enough for costs 10 feet. Dwarves are famously
+     exempt, and say so in their own trait text rather than anywhere central, so
+     derive() records it when it reads the race. */
+  function speedPenalty(actor) {
+    var a = armour(actor);
+    if (!a || !a.gear || !a.gear.strength) return 0;
+    if (actor.heavyArmorSpeedOk) return 0;
+    var str = SRD.mod ? (actor.abilities && actor.abilities.str) || 10 : 10;
+    return str < a.gear.strength ? 10 : 0;
+  }
+
+  function wearingArmour(actor) { return !!armour(actor); }
+  function wearingHeavy(actor) {
+    var a = armour(actor);
+    return !!(a && a.gear && a.gear.weight === 'heavy');
+  }
+  function wearingShield(actor) { return !!shield(actor); }
+
+  /* ---- putting the numbers back together -------------------------------- */
+
+  /* Recalculate everything that depends on what is worn. Called after any
+     equip or unequip, and by derive() once the inventory exists. */
+  function recompute(actor) {
+    if (!actor) return actor;
+    var arm = armour(actor), shd = shield(actor);
+    var dex = SRD.mod((actor.abilities && actor.abilities.dex) || 10);
+
+    var ac, why;
+    if (arm) {
+      var g = arm.gear;
+      var base = g.ac || 10;
+      if (g.weight === 'heavy') { ac = base; why = arm.name + ' ' + base; }
+      else if (g.weight === 'medium') {
+        var capped = Math.min(2, dex);
+        ac = base + capped;
+        why = arm.name + ' ' + base + U.sign(capped) + ' DEX (capped at +2)';
+      } else {
+        ac = base + dex;
+        why = arm.name + ' ' + base + U.sign(dex) + ' DEX';
+      }
+    } else {
+      ac = 10 + dex;
+      why = '10' + U.sign(dex) + ' DEX (no armour)';
+    }
+    if (shd) { ac += (shd.gear.ac || 2); why += ' +' + (shd.gear.ac || 2) + ' shield'; }
+
+    actor.armorName = arm ? arm.name : '';
+    actor.armorType = arm ? arm.gear.weight : null;
+    actor.shield = !!shd;
+    actor.ac = ac;
+    actor.acWhy = why;
+
+    /* Features that replace AC or add speed depend on what is worn, so they
+       have to be reconsidered every time it changes. apply() carries spent
+       resources forward, so re-running it costs nothing but the recalculation. */
+    if (VT.features && VT.features.apply) VT.features.apply(actor);
+    return actor;
+  }
+
+  /* Put an item into the bag, as gear when it is wearable. */
+  function add(actor, item, opts) {
+    opts = opts || {};
+    actor.inventory = actor.inventory || [];
+    var g = fromItem(item);
+    var entry = {
+      name: item.name,
+      qty: opts.qty || 1,
+      note: opts.note || '',
+      gear: g || undefined,
+      equipped: g ? !!opts.equipped : undefined
+    };
+    actor.inventory.push(entry);
+    if (entry.equipped) equip(actor, entry);
+    return entry;
+  }
+
+  VT.gear = {
+    slotOf: slotOf, fromItem: fromItem, add: add,
+    armour: armour, shield: shield,
+    equip: equip, unequip: unequip, toggle: toggle,
+    recompute: recompute,
+    stealthDisadvantage: stealthDisadvantage, speedPenalty: speedPenalty,
+    wearingArmour: wearingArmour, wearingHeavy: wearingHeavy, wearingShield: wearingShield
   };
 })();
 

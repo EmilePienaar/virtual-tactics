@@ -246,6 +246,12 @@
       ? c.race.name + (c.subrace && c.subrace.name ? ' (' + c.subrace.name + ')' : '') : '';
     a.backgroundName = c.background ? c.background.name : '';
 
+    /* Some races say their speed is not reduced by heavy armour - both PHB and
+       Athasian dwarves do. It is stated in the race's own trait text and
+       nowhere central, so read it here rather than keeping a list of names. */
+    a.heavyArmorSpeedOk = /speed is not reduced by wearing heavy armor/i
+      .test(JSON.stringify((c.race && c.race.entries) || ''));
+
     var bonuses = racialBonuses(c);
     /* Ability score improvements stack on top of race, and cap at 20. */
     (c.asi || []).forEach(function (entry) {
@@ -267,6 +273,10 @@
 
     a.size = c.race ? CV.raceSize(c.race) : 'medium';
     a.speed = c.race ? CV.raceSpeed(c.race) : 30;
+    /* What the race walks at, before features and armour. Kept so the feature
+       pass can recompute rather than accumulate - it runs again every time
+       something is equipped. */
+    a.baseSpeed = a.speed;
 
     /* Only the class you started as grants saving-throw proficiencies. No
        edition gives them on a multiclass, and adding them silently would
@@ -366,7 +376,28 @@
     a.hitDiceMax = level;
     a.hitDiceUsed = 0;
     a.coins = U.clone(c.coins || VT.coin.emptyPurse());
+    /* Equipment lives in the inventory, worn or not, so it can be taken off
+       without being thrown away. AC, stealth and speed all follow from what is
+       equipped rather than from a build-time choice nothing can revisit.
+
+       This has to come after the inventory exists, not before: an earlier
+       version built the gear a hundred lines up and had it silently overwritten
+       here. */
     a.inventory = U.clone(c.inventory || []);
+    if (VT.gear) {
+      var have = {};
+      a.inventory.forEach(function (e) { have[String(e.name).toLowerCase()] = e; });
+      if (c.armor && !have[String(c.armor.name).toLowerCase()]) {
+        VT.gear.add(a, c.armor, { equipped: true });
+      }
+      if (c.shield && !have.shield) {
+        VT.gear.add(a, { name: 'Shield', type: 'S', ac: 2 }, { equipped: true });
+      }
+      (c.weapons || []).forEach(function (w) {
+        if (!have[String(w.name).toLowerCase()]) VT.gear.add(a, w, { equipped: true });
+      });
+      VT.gear.recompute(a);
+    }
 
     /* Remember how this was built so Edit/level-up can re-derive. */
     a.build = toRefs(c);

@@ -889,6 +889,73 @@ the host *and* its descendants.
 
 ---
 
+## Equipment you can take off
+
+Armour used to be picked once at build time and then exist only as a name and an
+AC number. That made three things impossible at once - seeing your armour in
+your inventory, taking it off without deleting it, and applying the penalties
+that come with wearing it - and they are all the same missing idea: equipment is
+something you own that may or may not be worn right now.
+
+So an inventory entry can carry a `gear` record and an `equipped` flag, and
+armour class, Stealth and speed are all derived from what is equipped. Taking
+off plate is unsetting a boolean; the plate is still in the bag.
+
+Three penalties were simply absent. Heavy and medium armour give disadvantage on
+Stealth. Armour with a Strength requirement you do not meet costs 10 feet. And a
+monk's Unarmored Movement and a barbarian's Fast Movement both stop - which is
+what the word "unarmoured" in the feature name has been saying all along, while
+the code handed a monk in full plate the fastest speed on the board.
+
+**Two bugs this uncovered**, both from the same root: `features.apply()` was
+never meant to run twice.
+
+Equipping something has to re-run the feature pass, because Unarmored Defense
+and the speed features depend on what is worn. But the pass did
+`actor.speed = actor.speed + bonus`, mutating rather than computing - so a
+barbarian who put plate on and took it off twice ended up at **zero speed**.
+Speed is now recomputed from a stored `baseSpeed` every time, which makes the
+pass idempotent.
+
+The second was ordering: the gear was being built a hundred lines before
+`a.inventory = U.clone(c.inventory || [])`, which then silently threw it away.
+The armour existed, had the right AC, and appeared nowhere.
+
+### Speed features, swept
+
+Seventeen class features mention increasing speed. Only two are permanent and
+were implemented; three more were permanent and missing (Fast Movement, Superior
+Mobility, Roving / Deft Explorer). The other twelve - Bladesong, Dread Ambusher,
+Blade Flourish, Drunken Technique - are *activated*, and applying them passively
+would be wrong, so they are deliberately left out rather than forgotten.
+
+---
+
+## The ranger's companion
+
+Three different things are called a companion and they do not work alike: the
+2014 Beast Master picks any beast of CR 1/4 or lower, the Primal Companion picks
+one of three fixed stat blocks, and the Drakewarden gets a drake. The latter two
+scale with ranger level.
+
+The scaling ones are the whole difficulty, because their numbers are not numbers
+in the data - they are English:
+
+    ac: [{ special: "13 + PB (natural armor)" }]
+    hp: { special: "5 + five times your ranger level" }
+
+`convert.creature` reads the leading digits and stops, which gives a companion
+**5 hit points**. Its attack is worse: `{@hitYourSpellAttack}` cannot become a
+number without knowing the ranger, so the Maul came out as an ability with no
+attack roll at all, and `{@damage 1d8 + 2 + PB}` had the proficiency bonus
+guessed at 2 - correct only up to 4th level.
+
+All of it is resolvable at the point where the owner is known, so that is where
+it happens. Anything that cannot be resolved is said out loud on the panel
+rather than quietly guessed at.
+
+---
+
 ## Wild Shape, without swapping the character out
 
 Wild Shape is not a modifier - it is a second stat block. Beast form replaces

@@ -201,9 +201,14 @@
      Advantage and disadvantage put two groups in quietly, then we evaluate both
      and publish only the winning one - the pattern the official dice roller
      example uses. */
-  function rollD20(label, mod) {
+  /* `disadvantage` is for a source the roll itself knows about - armour
+     against Stealth, say - as opposed to the Adv/Dis buttons, which are the
+     player's call. They combine the way the rules say: any advantage and any
+     disadvantage cancel to a straight roll, however many of each there are. */
+  function rollD20(label, mod, disadvantage) {
     var expr = '1d20' + (mod ? sign(mod) : '');
     var mode = S.adv;
+    if (disadvantage) mode = mode > 0 ? 0 : -1;
     var name = label + (mode > 0 ? ' (Adv)' : mode < 0 ? ' (Dis)' : '');
     var descs = mode ? [{ name: name, roll: expr }, { name: name, roll: expr }]
                      : [{ name: name, roll: expr }];
@@ -551,11 +556,16 @@
         else a.skillProf.push(name);
         save(); render();
       };
+      /* Heavy and medium armour give disadvantage on Stealth. Rolling that
+         straight while wearing plate is quietly wrong, so the row says so and
+         the roll takes it. */
+      var stealthDis = name === 'stealth' && VT.gear && VT.gear.stealthDisadvantage(a);
       skillBox.appendChild(el('div', { class: 'rollrow', onClick: function () {
-        rollD20(U.cap(name), mod); } }, [
+        rollD20(U.cap(name), mod, stealthDis); } }, [
         pip,
         el('span', { class: 'lbl' }, [U.cap(name),
           el('span', { class: 'sub' }, ['  ' + SRD.ABILITY_NAME[abil] +
+            (stealthDis ? ' · disadvantage from ' + a.armorName : '') +
             (src && src !== 'proficient' ? ' · ' + src : '')])]),
         el('span', { class: 'mod' }, [sign(mod)])
       ]));
@@ -563,6 +573,10 @@
     view.appendChild(el('details', {}, [
       el('summary', {}, ['Skills']), el('div', {}, [skillBox])
     ]));
+
+    /* What you are carrying, and what of it you are wearing. */
+    var gearCard = gearPanel(a);
+    if (gearCard) view.appendChild(gearCard);
 
     /* tool proficiencies - a thieves' tools check is a real thing to roll */
     if ((a.toolProf || []).length) {
@@ -605,6 +619,12 @@
 
     var book = spellbookCard(a, spells);
     if (book) view.appendChild(book);
+
+    /* the ranger's animal, same shape as wild shape below it */
+    var compCard = companionCard(a);
+    if (compCard) view.appendChild(compCard);
+    var compPanel = companionPanel(a);
+    if (compPanel) view.appendChild(compPanel);
 
     /* wild shape: the picker, then the active form's own stat block */
     var wsCard = wildShapeCard(a);
@@ -1085,6 +1105,146 @@
     return el('div', {}, [el('div', { class: 'k' }, [k]), el('div', { class: 'v' }, [String(v)])]);
   }
 
+  /* ---- the ranger's companion -------------------------------------------
+
+     Built like Wild Shape and for the same reason: the animal is a separate
+     stat block beside the sheet, so changing which animal it is replaces one
+     object and nothing about the ranger is touched. */
+
+  function companionCard(a) {
+    if (!VT.companion || !VT.companion.kind(a)) return null;
+    var card = el('div', { class: 'card' }, [el('h3', {}, ['Companion'])]);
+
+    if (a.companion) {
+      card.appendChild(el('div', { class: 'ok' }, [
+        a.companion.name + ' is with you. Its stat block is below.'
+      ]));
+      card.appendChild(el('div', { class: 'btnrow' }, [
+        el('button', { class: 'btn sm', onClick: function () {
+          a.companionPicking = !a.companionPicking; save(); render();
+        } }, [a.companionPicking ? 'Never mind' : 'Change animal']),
+        el('button', { class: 'btn sm danger', onClick: function () {
+          a.companion = null; a.companionPicking = false; save(); render();
+        } }, ['Dismiss'])
+      ]));
+      if (!a.companionPicking) return card;
+    }
+
+    if (!FT.loaded) {
+      card.appendChild(el('div', { class: 'warn' }, [
+        'Connect your 5etools data to choose a companion.'
+      ]));
+      return card;
+    }
+
+    var groups = VT.companion.options(a);
+    if (!groups.length) {
+      card.appendChild(el('div', { class: 'muted' }, ['No companion stat blocks in your data.']));
+      return card;
+    }
+
+    groups.forEach(function (g) {
+      card.appendChild(el('div', { class: 'spell-head' }, [
+        el('span', { class: 'lbl' }, [g.group])
+      ]));
+      /* The 2014 list is every small beast in the books, so it gets a search
+         rather than four hundred rows. The Primal ones are three. */
+      if (g.list.length > 12) {
+        var q = '';
+        var box = el('div', { class: 'goods', style: { maxHeight: '170px', overflowY: 'auto' } });
+        var draw = function () {
+          U.clear(box);
+          var shown = (q ? g.list.filter(function (m) {
+            return String(m.name).toLowerCase().indexOf(q) >= 0;
+          }) : g.list).slice(0, 40);
+          shown.forEach(function (m) { box.appendChild(pickRow(a, m)); });
+          if (!shown.length) box.appendChild(el('div', { class: 'muted' }, ['Nothing matches.']));
+        };
+        card.appendChild(el('input', { type: 'search', placeholder: 'search beasts\u2026',
+          onInput: U.debounce(function (e) { q = e.target.value.toLowerCase(); draw(); }, 120) }));
+        card.appendChild(box);
+        draw();
+      } else {
+        g.list.forEach(function (m) { card.appendChild(pickRow(a, m)); });
+      }
+    });
+    return card;
+  }
+
+  function pickRow(a, mon) {
+    return el('div', { class: 'rollrow' }, [
+      el('span', { class: 'lbl' }, [
+        mon.name,
+        el('span', { class: 'sub' }, ['  ' + (mon.source || '') +
+          (VT.convert.crOf(mon) != null ? '  · CR ' + VT.wildshape.crLabel(VT.convert.crOf(mon)) : '')])
+      ]),
+      el('button', { class: 'btn sm primary', onClick: function () {
+        a.companion = VT.companion.assume(mon, a);
+        a.companionPicking = false;
+        save(); render();
+        toast(mon.name + ' joins you', 'ok');
+      } }, ['Take'])
+    ]);
+  }
+
+  /* The animal's own stat block, with its own hit points. */
+  function companionPanel(a) {
+    var c = a.companion;
+    if (!c) return null;
+
+    var card = el('div', { class: 'card wildshape' }, [
+      el('h3', {}, [c.name + '  ·  ' + (c.size || '') +
+        (c.scaling ? '  ·  scales with your level' : '')])
+    ]);
+
+    card.appendChild(el('div', { class: 'bigstats' }, [
+      stat('AC', c.ac), stat('HP', c.hp + '/' + c.hpMax),
+      stat('SPD', c.speed), stat('STR', c.abilities ? c.abilities.str : '\u2014')
+    ]));
+
+    var frac = U.clamp(c.hp / Math.max(1, c.hpMax), 0, 1);
+    card.appendChild(el('div', { class: 'hpbar' }, [
+      el('i', { style: { width: (frac * 100) + '%',
+        background: frac > .5 ? 'linear-gradient(180deg,#8ec97f,#5d8f52)'
+                  : frac > .25 ? 'linear-gradient(180deg,#e0c46a,#a8873c)'
+                  : 'linear-gradient(180deg,#d97b74,#8f4640)' } }),
+      el('span', {}, [c.hp + ' / ' + c.hpMax])
+    ]));
+
+    var amount = 5;
+    card.appendChild(el('div', { class: 'hpctl' }, [
+      el('button', { class: 'btn sm danger', onClick: function () {
+        c.hp = Math.max(0, c.hp - amount); save(); render();
+      } }, ['− Damage']),
+      el('input', { type: 'number', value: 5, min: 0,
+        onInput: function (e) { amount = Math.max(0, parseInt(e.target.value, 10) || 0); } }),
+      el('button', { class: 'btn sm', onClick: function () {
+        c.hp = Math.min(c.hpMax, c.hp + amount); save(); render();
+      } }, ['+ Heal'])
+    ]));
+
+    (c.warnings || []).forEach(function (w) {
+      card.appendChild(el('div', { class: 'warn' }, [w]));
+    });
+
+    if (c.scaling) {
+      card.appendChild(el('div', { class: 'muted', style: { marginTop: '6px' } }, [
+        'AC and hit points are worked out from your ranger level (' + c.ownerLevel +
+        ') and proficiency bonus, and its attacks use your proficiency. ' +
+        'Re-take it after levelling to bring the numbers up.'
+      ]));
+    }
+    if (c.senses) {
+      card.appendChild(el('div', { class: 'muted' }, ['Senses: ' + c.senses]));
+    }
+
+    (c.actions || []).forEach(function (act) { card.appendChild(actionRow(a, act)); });
+    if (c.notes) {
+      card.appendChild(el('p', { class: 'muted', style: { whiteSpace: 'pre-wrap' } }, [c.notes]));
+    }
+    return card;
+  }
+
   /* ---- wild shape --------------------------------------------------------
 
      A form is shown BESIDE the character rather than replacing them. Swapping
@@ -1266,6 +1426,60 @@
       el('button', { class: 'btn sm danger', onClick: function () {
         a.wildShape = null; save(); render();
       } }, ['Close ' + w.name])
+    ]));
+    return card;
+  }
+
+  /* Worn and carried, with a way to change which is which.
+
+     Equipment used to be a build-time choice with no way back: the armour you
+     picked was a name and an AC number, and taking it off meant deleting it.
+     Now it is an inventory entry with a flag, so a rogue can drop the mail
+     before sneaking and put it back afterwards without losing it. */
+  function gearPanel(a) {
+    var inv = a.inventory || [];
+    if (!inv.length) return null;
+    var wearable = inv.filter(function (e) { return e.gear; });
+    var rest = inv.filter(function (e) { return !e.gear; });
+
+    var card = el('div', { class: 'card' }, [
+      el('h3', {}, ['Equipment — ' + inv.length])
+    ]);
+
+    wearable.forEach(function (e) {
+      var g = e.gear;
+      var what = g.slot === 'armor'
+        ? (g.weight + ' armour · AC ' + g.ac +
+           (g.stealth ? ' · stealth disadvantage' : '') +
+           (g.strength ? ' · needs STR ' + g.strength : ''))
+        : g.slot === 'shield' ? 'shield · +' + (g.ac || 2) + ' AC'
+        : 'weapon';
+      card.appendChild(el('div', { class: 'rollrow' }, [
+        el('span', { class: 'lbl' }, [
+          e.name + (e.qty > 1 ? '  ×' + e.qty : ''),
+          el('span', { class: 'sub' }, ['  ' + what])
+        ]),
+        el('button', {
+          class: 'btn sm' + (e.equipped ? ' on' : ''),
+          title: e.equipped ? 'Take it off - it stays in your pack' : 'Put it on',
+          onClick: function () { VT.gear.toggle(a, e); save(); render(); }
+        }, [e.equipped ? 'Worn' : 'Wear'])
+      ]));
+    });
+
+    if (rest.length) {
+      card.appendChild(el('div', { class: 'muted', style: { marginTop: '8px' } }, ['Carried']));
+      rest.forEach(function (e) {
+        card.appendChild(el('div', { class: 'rollrow' }, [
+          el('span', { class: 'lbl' }, [
+            e.name + (e.qty > 1 ? '  ×' + e.qty : ''),
+            e.note ? el('span', { class: 'sub' }, ['  ' + e.note]) : null
+          ])
+        ]));
+      });
+    }
+    card.appendChild(el('p', { class: 'muted' }, [
+      'Taking something off leaves it in your pack. Add and remove items on the Edit tab.'
     ]));
     return card;
   }

@@ -141,6 +141,23 @@
         var second = /monk/i.test(cls || '') ? 'wis' : 'con';
         return 10 + mod(a, 'dex') + mod(a, second);
       }, note: 'While wearing no armour.' },
+    /* The permanently-on speed features. Most features that mention speed are
+       activated - Bladesong, Dread Ambusher, Blade Flourish - and would be
+       wrong applied passively, so they are deliberately not here. */
+    'superior mobility': { cls: 'rogue', speedBonus: function () { return 10; },
+      note: 'Climbing and swimming speeds increase too.' },
+    'roving': { cls: 'ranger', speedBonus: function (a) {
+        /* 2024 wording: only while not in heavy armour. */
+        if (VT.gear && VT.gear.wearingHeavy(a)) return 0;
+        return 10;
+      }, note: 'While not wearing heavy armour. Climb and swim speeds match your walking speed.' },
+    'deft explorer improvement': { cls: 'ranger', speedBonus: function () { return 5; },
+      note: 'Climbing and swimming speeds equal your walking speed.' },
+
+    'fast movement': { speedBonus: function (a) {
+        if (VT.gear && VT.gear.wearingHeavy(a)) return 0;
+        return 10;
+      }, note: 'While not wearing heavy armour.' },
     'brutal critical': { note: 'Roll one extra weapon damage die on a critical hit.' },
 
     /* --- Bard --- */
@@ -211,6 +228,9 @@
                   desc: 'Bonus action unarmed strike when you attack with a monk weapon.' }];
       } },
     'unarmored movement': { speedBonus: function (a) {
+        /* The name is the rule. Applying it in plate was making a monk in full
+           armour the fastest thing on the board. */
+        if (VT.gear && (VT.gear.wearingArmour(a) || VT.gear.wearingShield(a))) return 0;
         return byLevel([[2, 10], [6, 15], [10, 20], [14, 25], [18, 30]], lvl(a));
       }, note: 'While wearing no armour and no shield.' },
     'stunning strike': { note: 'Spend 1 ki: the target makes a CON save or is stunned.' },
@@ -410,7 +430,14 @@
       actor.slotsUsed = {};
     }
 
-    if (actor.speedBonus) actor.speed = (actor.speed || 30) + actor.speedBonus;
+    /* Speed is RECOMPUTED from the base rather than adjusted in place. This
+       pass runs again every time armour is put on or taken off, and adding the
+       bonus to whatever was already there compounded it every time - a
+       barbarian who equipped and unequipped plate twice ended up at zero. */
+    if (actor.baseSpeed == null) actor.baseSpeed = actor.speed || 30;
+    var drag = VT.gear ? VT.gear.speedPenalty(actor) : 0;
+    actor.speed = Math.max(0, actor.baseSpeed + (actor.speedBonus || 0) - drag);
+    actor.speedNote = drag ? 'slowed 10 ft by armour' : null;
 
     /* Feature actions go in after gear and spells, and never duplicate. */
     var have = {};
