@@ -26,6 +26,8 @@ a special case. It asks the three things prose cannot answer (weapon, armour or
 wondrous; attunement; rarity) and reads the rest; anything it could not place is
 listed back to you and kept as the description rather than silently dropped. Out
 comes a code you paste into a player's sheet, or an item you drop into a shop.
+Saved items go to a library that keeps each one with its effects and its code,
+so the same item can be handed out again months later without rebuilding it.
 
 ---
 
@@ -111,6 +113,9 @@ Day to day:
   items, merged into one list. Conditional ones — Rage, Bear Totem, anything you
   switch on — are listed as reminders rather than claimed, because a sheet that
   overstates a defence is worse than one that says nothing.
+- **Wands and staves offer their spells.** A Wand of Magic Missiles held in
+  your hand puts Magic Missile in your action list with its charges beside it.
+  An item that requires attunement offers nothing until it is attuned.
 - **Magic items do what they say.** An attuned Belt of Hill Giant Strength sets
   your Strength, a Ring of Protection adds its +1 to AC and saves, a Ring of
   Fire Resistance gives you resistance, Boots of Speed double your movement. An

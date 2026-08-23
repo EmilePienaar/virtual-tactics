@@ -178,6 +178,10 @@
     /* Race, features and items all grant resistances; this is where the three
        become one list. */
     if (VT.resist) VT.resist.gather(actor);
+
+    /* Wands and staves offer their spells while they are live. Recomputed here
+       so attuning or unattuning one makes its action appear or disappear. */
+    if (VT.itemfx && VT.itemfx.allActions) actor.itemActions = VT.itemfx.allActions(actor);
     return actor;
   }
 

@@ -619,6 +619,23 @@
     } else {
       acts.appendChild(el('div', { class: 'muted' }, ['Nothing but spells.']));
     }
+
+    /* What your gear lets you do. Kept in its own group because it comes and
+       goes with what is worn and attuned, and because the charges belong to
+       the item rather than to you. */
+    var fromItems = a.itemActions || [];
+    if (fromItems.length) {
+      acts.appendChild(el('div', { class: 'spell-head' }, [
+        el('span', { class: 'lbl' }, ['From your items'])
+      ]));
+      fromItems.forEach(function (act) {
+        acts.appendChild(actionRow(a, act));
+        var entry = (a.inventory || []).filter(function (e) { return e.name === act.fromItem; })[0];
+        if (entry && entry.fx && entry.fx.charges) {
+          acts.appendChild(chargeRow(a, entry, act));
+        }
+      });
+    }
     view.appendChild(acts);
 
     var book = spellbookCard(a, spells);
@@ -1694,6 +1711,30 @@
       'Taking something off leaves it in your pack. Add and remove items on the Edit tab.'
     ]));
     return card;
+  }
+
+  /* An item's charges, spent from the item rather than from you. */
+  function chargeRow(a, entry, act) {
+    var max = entry.fx.charges;
+    var used = entry.chargesUsed || 0;
+    var left = Math.max(0, max - used);
+    var cost = act.chargeCost || 1;
+    return el('div', { class: 'castrow' }, [
+      el('span', { class: 'sub' }, ['charges']),
+      el('button', { class: 'btn sm', title: 'Regain one',
+        disabled: used <= 0 ? true : null,
+        onClick: function () { entry.chargesUsed = Math.max(0, used - 1); save(); render(); } }, ['+']),
+      el('span', { class: 'mod', style: { color: left ? 'var(--green)' : 'var(--red)' } },
+        [left + '/' + max]),
+      el('button', { class: 'btn sm', title: 'Spend ' + cost,
+        disabled: left < cost ? true : null,
+        onClick: function () { entry.chargesUsed = used + cost; save(); render(); } },
+        ['\u2212' + (cost > 1 ? cost : '')]),
+      entry.fx.rechargeAmount
+        ? el('span', { class: 'sub' }, ['  regains ' + entry.fx.rechargeAmount +
+            (entry.fx.recharge ? ' at ' + entry.fx.recharge : '')])
+        : null
+    ]);
   }
 
   /* One rollable action. Pulled out of the actions card so a wild-shaped form

@@ -11,7 +11,7 @@
 
   var KEY = 'vtactics.shopsmith.v1';
 
-  var S = { mode: 'shops', shops: [], selectedId: null, currency: null };
+  var S = { mode: 'shops', shops: [], selectedId: null, currency: null, forged: [] };
   var work, side, srcBadge;
 
   /* ==== boot ============================================================= */
@@ -49,11 +49,13 @@
       S.shops = (d.shops || []).map(SHOPS.normalise);
       S.currency = d.currency || null;
       S.selectedId = d.selectedId || (S.shops[0] && S.shops[0].id) || null;
+      S.forged = Array.isArray(d.forged) ? d.forged : [];
     } catch (e) { S.shops = []; }
   }
   var saveSoon = U.debounce(function () {
     try {
       localStorage.setItem(KEY, JSON.stringify({
+        forged: S.forged,
         shops: S.shops, currency: S.currency, selectedId: S.selectedId
       }));
     } catch (e) {
@@ -222,6 +224,7 @@
     work.appendChild(desc);
 
     if (F.result) work.appendChild(forgeResult());
+    work.appendChild(forgeLibrary());
     renderForgeSide();
   }
 
@@ -290,11 +293,125 @@
         save();
         alertLine(card, 'Added to ' + shop.name + '. Set its price on the Edit tab.');
       }, 'sm'),
+      btn('Save to library', function () {
+        S.forged = S.forged || [];
+        var already = S.forged.filter(function (x) { return x.item.name === it.name; })[0];
+        var record = {
+          id: already ? already.id : U.uid('hb'),
+          at: Date.now(),
+          item: it,
+          code: code,
+          effects: describeForged(it, r)
+        };
+        if (already) {
+          S.forged[S.forged.indexOf(already)] = record;
+          alertLine(card, 'Replaced the saved copy of ' + it.name + '.');
+        } else {
+          S.forged.push(record);
+          alertLine(card, 'Saved ' + it.name + ' to the library.');
+        }
+        save(); render();
+      }, 'sm'),
       btn('Download JSON', function () {
         var blob = new Blob([JSON.stringify(it, null, 1)], { type: 'application/json' });
         var a2 = document.createElement('a');
         a2.href = URL.createObjectURL(blob);
         a2.download = String(it.name).replace(/[^\w-]+/g, '_') + '.item.json';
+        document.body.appendChild(a2); a2.click();
+        setTimeout(function () { URL.revokeObjectURL(a2.href); a2.remove(); }, 400);
+      }, 'sm')
+    ]));
+    return card;
+  }
+
+  /* A plain reading of what the item does, kept with it so the library is
+     browsable without re-parsing anything. */
+  function describeForged(it, result) {
+    var bits = [];
+    var fx = VT.itemfx.effectsOf(it);
+    if (fx) { var d = VT.itemfx.describe(fx); if (d) bits.push(d); }
+    if (it.dmg1) bits.push('base ' + it.dmg1 + ' ' + (it.dmgType || ''));
+    if (it.bonusWeapon) bits.push(it.bonusWeapon + ' weapon');
+    if (it.ac) bits.push('AC ' + it.ac);
+    if (it.charges) bits.push(it.charges + ' charges');
+    if (result && result.action) {
+      bits.push('action: ' + result.action.kind +
+                (result.action.dc ? ' DC' + result.action.dc : '') +
+                (result.action.dmg ? ' ' + result.action.dmg : ''));
+    }
+    return bits.join('  ·  ') || 'no mechanical effects read';
+  }
+
+  /* Everything forged so far, with the code that carries each one. */
+  function forgeLibrary() {
+    var card = el('div', { class: 'panel' }, [
+      el('h3', {}, ['Forged so far \u2014 ' + (S.forged || []).length])
+    ]);
+    if (!(S.forged || []).length) {
+      card.appendChild(el('p', { class: 'tiny' }, [
+        'Items you save appear here with their code, so you can hand the same ' +
+        'item out again months later without rebuilding it.'
+      ]));
+      return card;
+    }
+
+    S.forged.slice().reverse().forEach(function (rec) {
+      var it = rec.item;
+      var box = el('div', { class: 'shopcard' });
+      box.appendChild(el('div', { class: 'nm' }, [
+        it.name,
+        el('span', { class: 'keep' }, ['  ' + it.rarity +
+          (it.reqAttune ? '  ·  attunement' : '')])
+      ]));
+      box.appendChild(el('div', { class: 'tiny' }, [rec.effects]));
+
+      var ta = el('textarea', { class: 'lootcode', rows: 2, readonly: true, value: rec.code });
+      ta.addEventListener('focus', function () { ta.select(); });
+      ta.addEventListener('click', function () { ta.select(); });
+      box.appendChild(ta);
+
+      box.appendChild(el('div', { class: 'btnrow' }, [
+        btn('Copy code', function () {
+          ta.select();
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(rec.code).then(
+              function () { alertLine(box, 'Copied.'); },
+              function () { alertLine(box, 'Select the box and press Ctrl+C.'); });
+          } else { alertLine(box, 'Select the box and press Ctrl+C.'); }
+        }, 'sm primary'),
+        btn('Into the selected shop', function () {
+          var shop = selected();
+          if (!shop) { alertLine(box, 'No shop selected.'); return; }
+          shop.items.push({ id: U.uid('g'), name: it.name, source: 'HB',
+                            note: it.rarity, price: 0, qty: 1, item: it });
+          save();
+          alertLine(box, 'Added to ' + shop.name + '.');
+        }, 'sm'),
+        btn('Edit again', function () {
+          F.name = it.name;
+          F.kind = it.armor ? 'armor' : (it.weaponCategory ? 'weapon'
+                 : it.type === 'S' ? 'shield' : 'wondrous');
+          F.rarity = it.rarity || 'uncommon';
+          F.attune = !!it.reqAttune;
+          F.text = (it.entries || []).join('\n');
+          F.result = null;
+          render();
+        }, 'sm'),
+        btn('\u00d7', function () {
+          S.forged = S.forged.filter(function (x) { return x.id !== rec.id; });
+          save(); render();
+        }, 'sm danger')
+      ]));
+      card.appendChild(box);
+    });
+
+    card.appendChild(el('div', { class: 'btnrow', style: { marginTop: '8px' } }, [
+      btn('Export the library', function () {
+        var blob = new Blob([JSON.stringify({ _format: 'vt-forged', v: 1,
+          items: S.forged }, null, 1)], { type: 'application/json' });
+        var a2 = document.createElement('a');
+        a2.href = URL.createObjectURL(blob);
+        a2.download = 'forged-items.json';
         document.body.appendChild(a2); a2.click();
         setTimeout(function () { URL.revokeObjectURL(a2.href); a2.remove(); }, 400);
       }, 'sm')

@@ -2430,6 +2430,10 @@ details > div { padding: 0 8px 8px; }
     /* Race, features and items all grant resistances; this is where the three
        become one list. */
     if (VT.resist) VT.resist.gather(actor);
+
+    /* Wands and staves offer their spells while they are live. Recomputed here
+       so attuning or unattuning one makes its action appear or disappear. */
+    if (VT.itemfx && VT.itemfx.allActions) actor.itemActions = VT.itemfx.allActions(actor);
     return actor;
   }
 
@@ -2511,6 +2515,17 @@ details > div { padding: 0 8px 8px; }
     if (item.modifySpeed && item.modifySpeed.multiply) fx.speedMul = U.clone(item.modifySpeed.multiply);
     if (item.modifySpeed && item.modifySpeed.bonus) fx.speedAdd = U.clone(item.modifySpeed.bonus);
     if (item.reqAttune) fx.needsAttune = true;
+    /* A wand is not just a bonus - it casts. 524 items carry the spells they
+       cast in a structured field, keyed by what it costs to cast them:
+         attachedSpells: { charges: { "1": ["magic missile"] } }
+       and 1,157 carry charges. Both are kept so the sheet can offer the spell
+       as a real action rather than leaving it buried in the description. */
+    if (item.attachedSpells) fx.spells = U.clone(item.attachedSpells);
+    if (item.charges) fx.charges = item.charges;
+    if (item.recharge) fx.recharge = item.recharge;
+    if (item.rechargeAmount) {
+      fx.rechargeAmount = String(item.rechargeAmount).replace(/\{@dice\s*([^}]*)\}/i, '$1').trim();
+    }
     /* Armour states its total AC already, so its own +1 must not be added on
        top - "+1 Plate Armor" carries ac 19 AND bonusAc "+1", and counting both
        gives 20. */
@@ -2598,6 +2613,71 @@ details > div { padding: 0 8px 8px; }
     return actor;
   }
 
+  /* The spells an item can cast, as rollable actions.
+
+     Gated the same way every other effect is: an item that requires attunement
+     grants nothing until attuned, and anything else has to be held or worn.
+     A wand in your pack is not a wand in your hand. */
+  function actionsFrom(actor, entry) {
+    if (!entry || !entry.fx || !entry.fx.spells) return [];
+    if (!live(actor, entry)) return [];
+    var FT = VT.fivetools;
+    if (!FT || !FT.get) return [];
+
+    var out = [];
+    var seen = {};
+    Object.keys(entry.fx.spells).forEach(function (how) {
+      var byCost = entry.fx.spells[how];
+      /* "charges" is an object of cost -> names; the rest are plain arrays. */
+      var pairs = Array.isArray(byCost)
+        ? [[null, byCost]]
+        : Object.keys(byCost).map(function (k) { return [k, byCost[k]]; });
+
+      pairs.forEach(function (pair) {
+        var cost = pair[0], names = pair[1] || [];
+        names.forEach(function (raw) {
+          var name = String(raw).split('|')[0].trim();
+          var key = name.toLowerCase();
+          if (seen[key]) return;
+          seen[key] = 1;
+          var rec = (FT.get('spell') || []).find(function (sp) {
+            return String(sp.name).toLowerCase() === key;
+          });
+          if (!rec) return;
+
+          var prof = VT.actor.prof(actor);
+          var act = VT.convert.spell(rec, {
+            dc: actor.spellDC || (8 + prof + 2),
+            atk: actor.spellAttack || (prof + 2),
+            mod: 0, prof: prof, level: actor.level || 1
+          });
+          if (!act) return;
+          act = U.clone(act);
+          act.fromItem = entry.name;
+          act.name = act.name + '  (' + entry.name + ')';
+          /* An item's spell is cast from the item, not from your own slots. */
+          delete act.spellLevel;
+          if (cost) {
+            act.chargeCost = parseInt(cost, 10) || 1;
+            act.desc = (act.desc ? act.desc + '  ' : '') +
+                       act.chargeCost + ' charge' + (act.chargeCost === 1 ? '' : 's') + '.';
+          }
+          out.push(act);
+        });
+      });
+    });
+    return out;
+  }
+
+  /* Every action every live item grants. */
+  function allActions(actor) {
+    var out = [];
+    (actor.inventory || []).forEach(function (e) {
+      actionsFrom(actor, e).forEach(function (a) { out.push(a); });
+    });
+    return out;
+  }
+
   /* Tag an inventory entry with its effects, if it has any. */
   function tag(entry, item) {
     var fx = effectsOf(item);
@@ -2630,6 +2710,7 @@ details > div { padding: 0 8px 8px; }
 
   VT.itemfx = {
     effectsOf: effectsOf, tag: tag, live: live, active: active,
+    actionsFrom: actionsFrom, allActions: allActions,
     applyAbilities: applyAbilities, applyRest: applyRest, describe: describe
   };
 })();
@@ -13049,6 +13130,23 @@ details > div { padding: 0 8px 8px; }
     } else {
       acts.appendChild(el('div', { class: 'muted' }, ['Nothing but spells.']));
     }
+
+    /* What your gear lets you do. Kept in its own group because it comes and
+       goes with what is worn and attuned, and because the charges belong to
+       the item rather than to you. */
+    var fromItems = a.itemActions || [];
+    if (fromItems.length) {
+      acts.appendChild(el('div', { class: 'spell-head' }, [
+        el('span', { class: 'lbl' }, ['From your items'])
+      ]));
+      fromItems.forEach(function (act) {
+        acts.appendChild(actionRow(a, act));
+        var entry = (a.inventory || []).filter(function (e) { return e.name === act.fromItem; })[0];
+        if (entry && entry.fx && entry.fx.charges) {
+          acts.appendChild(chargeRow(a, entry, act));
+        }
+      });
+    }
     view.appendChild(acts);
 
     var book = spellbookCard(a, spells);
@@ -14124,6 +14222,30 @@ details > div { padding: 0 8px 8px; }
       'Taking something off leaves it in your pack. Add and remove items on the Edit tab.'
     ]));
     return card;
+  }
+
+  /* An item's charges, spent from the item rather than from you. */
+  function chargeRow(a, entry, act) {
+    var max = entry.fx.charges;
+    var used = entry.chargesUsed || 0;
+    var left = Math.max(0, max - used);
+    var cost = act.chargeCost || 1;
+    return el('div', { class: 'castrow' }, [
+      el('span', { class: 'sub' }, ['charges']),
+      el('button', { class: 'btn sm', title: 'Regain one',
+        disabled: used <= 0 ? true : null,
+        onClick: function () { entry.chargesUsed = Math.max(0, used - 1); save(); render(); } }, ['+']),
+      el('span', { class: 'mod', style: { color: left ? 'var(--green)' : 'var(--red)' } },
+        [left + '/' + max]),
+      el('button', { class: 'btn sm', title: 'Spend ' + cost,
+        disabled: left < cost ? true : null,
+        onClick: function () { entry.chargesUsed = used + cost; save(); render(); } },
+        ['\u2212' + (cost > 1 ? cost : '')]),
+      entry.fx.rechargeAmount
+        ? el('span', { class: 'sub' }, ['  regains ' + entry.fx.rechargeAmount +
+            (entry.fx.recharge ? ' at ' + entry.fx.recharge : '')])
+        : null
+    ]);
   }
 
   /* One rollable action. Pulled out of the actions card so a wild-shaped form
