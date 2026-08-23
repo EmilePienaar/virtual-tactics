@@ -399,8 +399,17 @@
       kind: 'burst', from: { x: attacker.x, y: attacker.y }, to: { x: cx, y: cy },
       color: '#ffb04d', dur: 0.45
     });
+    /* Magic Missile and its kind name no saving throw and no attack roll -
+       they simply hit. convert.js models them as a save because the engine has
+       no "just hits" kind, and marks them autoHit; honouring that mark is this
+       side of the bargain. Without it a target rolled a Dexterity save against
+       Magic Missile and took half, or none, which is not a thing that can
+       happen. */
+    var auto = !!action.autoHit;
     log('<b>' + U.esc(attacker.name) + '</b> casts ' + U.esc(action.name) +
-      ' <span class="roll">DC ' + action.dc + ' ' + String(action.save).toUpperCase() + '</span>');
+      (auto ? ' <span class="roll">hits automatically</span>'
+            : ' <span class="roll">DC ' + action.dc + ' ' +
+              String(action.save).toUpperCase() + '</span>'));
 
     var caught = map.tokens.filter(function (t) {
       return t.hp > 0 && tiles.some(function (p) { return p.x === t.x && p.y === t.y; });
@@ -408,15 +417,26 @@
     if (!caught.length) log('&nbsp;&nbsp;<span class="miss">nothing in the area</span>');
 
     caught.forEach(function (t) {
-      var r = VT.dice.d20(A.saveMod(t, action.save));
-      var ok = r.total >= action.dc;
       var dmg = VT.dice.roll(action.dmg || '0');
-      var amount = ok ? (action.half ? Math.floor(dmg.total / 2) : 0) : dmg.total;
+      /* Some of these throw several darts at once. */
+      var count = Math.max(1, action.count || 1);
+      var total = dmg.total;
+      for (var extra = 1; extra < count; extra++) total += VT.dice.roll(action.dmg || '0').total;
+
+      var r = null, ok = false, amount = total;
+      if (!auto) {
+        r = VT.dice.d20(A.saveMod(t, action.save));
+        ok = r.total >= action.dc;
+        amount = ok ? (action.half ? Math.floor(total / 2) : 0) : total;
+      }
+
       var res = A.applyDamage(t, amount, action.dmgType);
-      log('&nbsp;&nbsp;' + U.esc(t.name) + ' <span class="roll">' + r.detail + ' = ' + r.total + '</span> ' +
-        (ok ? '<span class="hit">saves</span>' : '<span class="miss">fails</span>') +
+      log('&nbsp;&nbsp;' + U.esc(t.name) + ' ' +
+        (auto ? '<span class="hit">hit</span>'
+              : '<span class="roll">' + r.detail + ' = ' + r.total + '</span> ' +
+                (ok ? '<span class="hit">saves</span>' : '<span class="miss">fails</span>')) +
         ' <span class="dmg">' + res.taken + '</span>');
-      floater(t, '-' + res.taken, ok ? '#e0b96a' : '#ff8a5c');
+      floater(t, '-' + res.taken, (!auto && ok) ? '#e0b96a' : '#ff8a5c');
       if (!ok && action.applies) A.addCond(t, action.applies);
       if (res.downed) announceDown(t);
     });

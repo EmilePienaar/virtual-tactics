@@ -4608,6 +4608,10 @@ details > div { padding: 0 8px 8px; }
         act.dmg = expr; act.dmgType = dtype;
         act.half = !/automatically|without an attack roll|strikes? .*simultaneous/i.test(raw);
         act.autoHit = !act.half;
+        /* The buff branch above sets a default condition before we know this
+           is damage. Leaving it behind put "blessed" on Magic Missile, which
+           is not a thing it does. */
+        if (act.condition === 'blessed') delete act.condition;
       }
     }
     /* Spell text carries its own placeholders ({{spellcasting_mod}} in a few
