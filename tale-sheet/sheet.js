@@ -160,6 +160,11 @@
     if (!Array.isArray(a.resources)) a.resources = [];
     if (!a.slotsUsed) a.slotsUsed = {};
     if (a.expertiseSlots == null) a.expertiseSlots = 0;
+    /* Characters saved before proficiencies existed have no lists. Work them
+       out from the build if the compendium can still resolve it; leave them
+       absent if it cannot, since an absent list costs nothing and a guessed
+       one costs the player their attack bonus. */
+    if (VT.proficiency) VT.proficiency.backfill(a);
   }
 
   function repairActions(a) {
@@ -512,16 +517,20 @@
     SRD.ABILITIES.forEach(function (k) {
       var mod = VT.actor.abilityMod(a, k);
       var sv = VT.features.saveMod(a, k);
+      /* Armour you were never trained in makes every Strength and Dexterity
+         roll disadvantaged, checks and saves alike. */
+      var hindered = VT.proficiency && VT.proficiency.hindersAbility(a, k);
+      var hinderWhy = hindered ? ' · disadvantage, ' + a.armorUnskilled.why : '';
       grid.appendChild(el('div', { class: 'abil-cell' }, [
         el('span', { class: 'k' }, [SRD.ABILITY_NAME[k]]),
         el('span', { class: 'v' }, [String(a.abilities[k])]),
         el('span', { class: 'acts' }, [
-          el('button', { title: 'Ability check', onClick: function () {
-            rollD20(SRD.ABILITY_NAME[k] + ' check', mod); } }, [sign(mod)]),
+          el('button', { title: 'Ability check' + hinderWhy, onClick: function () {
+            rollD20(SRD.ABILITY_NAME[k] + ' check', mod, hindered); } }, [sign(mod)]),
           el('button', { title: 'Saving throw' + ((a.saveProf || []).indexOf(k) >= 0 ? ' (proficient)' : '') +
-              (a.saveBonusAll ? ' +' + a.saveBonusAll + ' from your aura' : ''),
+              (a.saveBonusAll ? ' +' + a.saveBonusAll + ' from your aura' : '') + hinderWhy,
             style: { color: (a.saveProf || []).indexOf(k) >= 0 ? 'var(--green)' : '' },
-            onClick: function () { rollD20(SRD.ABILITY_NAME[k] + ' save', sv); } }, ['sv ' + sign(sv)])
+            onClick: function () { rollD20(SRD.ABILITY_NAME[k] + ' save', sv, hindered); } }, ['sv ' + sign(sv)])
         ])
       ]));
     });
@@ -560,12 +569,18 @@
          straight while wearing plate is quietly wrong, so the row says so and
          the roll takes it. */
       var stealthDis = name === 'stealth' && VT.gear && VT.gear.stealthDisadvantage(a);
+      /* And every Strength or Dexterity skill suffers if the armour itself is
+         beyond your training - a different penalty from the Stealth one, and
+         they stack into the same single disadvantage. */
+      var untrainedDis = VT.proficiency && VT.proficiency.hindersSkill(a, name);
+      var dis = stealthDis || untrainedDis;
       skillBox.appendChild(el('div', { class: 'rollrow', onClick: function () {
-        rollD20(U.cap(name), mod, stealthDis); } }, [
+        rollD20(U.cap(name), mod, dis); } }, [
         pip,
         el('span', { class: 'lbl' }, [U.cap(name),
           el('span', { class: 'sub' }, ['  ' + SRD.ABILITY_NAME[abil] +
             (stealthDis ? ' · disadvantage from ' + a.armorName : '') +
+            (untrainedDis && !stealthDis ? ' · disadvantage, ' + a.armorUnskilled.why : '') +
             (src && src !== 'proficient' ? ' · ' + src : '')])]),
         el('span', { class: 'mod' }, [sign(mod)])
       ]));
@@ -581,6 +596,11 @@
     /* What you are carrying, and what of it you are wearing. */
     var gearCard = gearPanel(a);
     if (gearCard) view.appendChild(gearCard);
+
+    /* Languages, armour and weapons. Tools have their own card below because
+       they are the only one of the four you actually roll. */
+    var profCard = proficiencyCard(a);
+    if (profCard) view.appendChild(profCard);
 
     /* tool proficiencies - a thieves' tools check is a real thing to roll */
     if ((a.toolProf || []).length) {
@@ -1010,6 +1030,15 @@
     if (!spells.length) return null;
 
     var card = el('div', { class: 'card' }, [el('h3', {}, ['Spells'])]);
+    /* Not a disadvantage but a bar: unfamiliar armour stops spellcasting
+       outright. The spells stay listed and rollable - the sheet's job is to
+       tell the player, not to hide their character from them. */
+    if (VT.proficiency && VT.proficiency.blocksSpells(a)) {
+      card.appendChild(el('div', { class: 'warn' }, [
+        'You cannot cast spells while wearing ' + a.armorUnskilled.items.join(' and ') +
+        ' — you are not proficient with it. Take it off on the Equipment card.'
+      ]));
+    }
     if (a.spellDC) {
       card.appendChild(el('div', { class: 'muted', style: { marginBottom: '6px' } }, [
         'Spell save DC ' + a.spellDC + ' · spell attack ' + sign(a.spellAttack)
@@ -1714,6 +1743,69 @@
     return card;
   }
 
+  /* What you were trained to use. Read-only here; the Edit tab is where it is
+     changed, because unlike hit points this is not something that moves during
+     a session.
+
+     Armour is shown as all four kinds with the ones you have lit, rather than
+     as a list of what you have. A wizard's card saying "light: no, medium: no,
+     heavy: no, shields: no" is the whole point - it is the answer to "why is my
+     attack roll wrong", and a list of nothing answers nothing. */
+  function proficiencyCard(a) {
+    var P = VT.proficiency;
+    if (!P) return null;
+    var langs = a.langProf || [];
+    var armour = a.armorProf, weapons = a.weaponProf;
+    if (!Array.isArray(armour) && !Array.isArray(weapons) && !langs.length) return null;
+
+    var card = el('div', { class: 'card' }, [el('h3', {}, ['Proficiencies'])]);
+
+    if (a.armorUnskilled) {
+      card.appendChild(el('div', { class: 'warn' }, [a.armorUnskilled.note]));
+    }
+
+    function row(label, chips, note) {
+      if (!chips.length) return;
+      var box = el('div', { class: 'row' }, [el('label', {}, [label])]);
+      var wrap = el('div', { class: 'grow' });
+      chips.forEach(function (c) { wrap.appendChild(c); });
+      if (note) wrap.appendChild(el('span', { class: 'sub' }, ['  ' + note]));
+      box.appendChild(wrap);
+      card.appendChild(box);
+    }
+
+    function chip(text, on, title) {
+      return el('span', { class: 'chip' + (on ? ' good on' : ''), title: title || '' }, [text]);
+    }
+
+    if (Array.isArray(armour)) {
+      row('Armour', P.ARMOUR_KINDS.map(function (k) {
+        return chip(U.cap(k), armour.indexOf(k) >= 0,
+          armour.indexOf(k) >= 0 ? 'Trained' : 'No training - wearing this is disadvantage on ' +
+            'Strength and Dexterity rolls, and no spells');
+      }).concat(armour.filter(function (k) {
+        return P.ARMOUR_KINDS.indexOf(k) < 0;
+      }).map(function (k) { return chip(U.cap(k), true, 'Granted by name'); })));
+    }
+
+    if (Array.isArray(weapons)) {
+      var specific = weapons.filter(function (k) { return P.WEAPON_KINDS.indexOf(k) < 0; });
+      row('Weapons', P.WEAPON_KINDS.map(function (k) {
+        return chip(U.cap(k), weapons.indexOf(k) >= 0,
+          weapons.indexOf(k) >= 0 ? 'Trained' : 'No training - these attacks lose your proficiency bonus');
+      }).concat(specific.map(function (k) { return chip(U.cap(k), true, 'Granted by name'); })),
+        weapons.length ? '' : 'nothing - every attack is without your proficiency bonus');
+    }
+
+    if (langs.length || a.langChoices) {
+      row('Languages', langs.map(function (l) { return chip(U.cap(l), true); }),
+        a.langChoices
+          ? a.langChoices + ' more of your choice - add them on the Edit tab'
+          : '');
+    }
+    return card;
+  }
+
   /* Worn and carried, with a way to change which is which.
 
      Equipment used to be a build-time choice with no way back: the armour you
@@ -1729,6 +1821,9 @@
     var card = el('div', { class: 'card' }, [
       el('h3', {}, ['Equipment — ' + inv.length])
     ]);
+    if (a.armorUnskilled) {
+      card.appendChild(el('div', { class: 'warn' }, [a.armorUnskilled.note]));
+    }
 
     wearable.forEach(function (e) {
       var g = e.gear;
@@ -1739,7 +1834,13 @@
            (g.stealth ? ' · stealth disadvantage' : '') +
            (g.strength ? ' · needs STR ' + g.strength : ''))
         : g.slot === 'shield' ? 'shield · +' + (g.ac || 2) + ' AC'
-        : 'weapon';
+        : 'weapon' + (VT.proficiency && g.category &&
+            !VT.proficiency.weaponOk(a, e.name, g.category)
+            ? ' · not proficient' : '');
+      if (VT.proficiency && (g.slot === 'armor' || g.slot === 'shield') &&
+          !VT.proficiency.armourOk(a, e)) {
+        what += ' · beyond your training';
+      }
       card.appendChild(el('div', { class: 'rollrow' }, [
         el('span', { class: 'lbl' }, [
           e.name + (e.qty > 1 ? '  ×' + e.qty : ''),
@@ -1807,10 +1908,15 @@
       ])
     ]);
     if (act.kind === 'melee' || act.kind === 'ranged') {
-      line.appendChild(el('button', { class: 'btn sm', title: 'Attack roll', onClick: function () {
-        rollD20(act.name, act.toHit || 0);
-        if (act.uses) { VT.actor.spendUse(a, act); save(); }
-      } }, [sign(act.toHit || 0)]));
+      /* A weapon attack made in armour you were never trained in is at
+         disadvantage; the missing proficiency bonus is already out of toHit. */
+      var atkDis = VT.proficiency && VT.proficiency.hindersAttack(a, act);
+      line.appendChild(el('button', { class: 'btn sm',
+        title: 'Attack roll' + (atkDis ? ' · disadvantage, ' + a.armorUnskilled.why : ''),
+        onClick: function () {
+          rollD20(act.name, act.toHit || 0, atkDis);
+          if (act.uses) { VT.actor.spendUse(a, act); save(); }
+        } }, [sign(act.toHit || 0)]));
     }
     if (act.kind === 'save' && act.dc) {
       line.appendChild(act.autoHit
@@ -1845,6 +1951,9 @@
        unsure, but "confident" is not "correct", and the player should know
        which numbers to glance at before trusting them. */
     var mark = act.derived ? ' · read from text' : '';
+    /* An attack with no proficiency bonus in it looks like an arithmetic
+       mistake unless the row says why. */
+    if (act.notProficient) mark += ' · not proficient, no bonus';
     if (act.kind === 'melee') return 'melee ' + (act.reach || 5) + 'ft ' + (act.dmgType || '') + mark;
     if (act.kind === 'ranged') return 'ranged ' + (act.range ? act.range[0] + '/' + act.range[1] : '') + 'ft' + mark;
     if (act.kind === 'save') return (act.autoHit ? 'hits automatically'
@@ -2709,6 +2818,135 @@
         'Connect your 5etools data in Setup to add weapons, armour and spells from the books. ' +
         'You can still add actions by hand below.'
       ]));
+    }
+
+    /* --- proficiencies ---
+       Armour and weapons are toggles because there are only ever six answers
+       that matter; languages and named weapons are free text because the list
+       is open-ended and a DM hands them out one at a time.
+
+       Every change goes back through gear.recompute(), which is what re-reads
+       the armour penalty and puts the proficiency bonus back into - or takes it
+       out of - each weapon attack. Editing the array alone would leave the
+       numbers on the Sheet tab stale until something else was equipped. */
+    var P = VT.proficiency;
+    if (P) {
+      /* Held locally and written back only when something is actually
+         changed. A character we know nothing about must stay that way just for
+         having had their Edit tab opened - assigning [] here would turn "never
+         asked" into "trained in nothing" and dock every attack they make. */
+      var armourList = (a.armorProf || []).slice();
+      var weaponList = (a.weaponProf || []).slice();
+      var langList = (a.langProf || []).slice();
+
+      var pc = el('div', { class: 'card' }, [el('h3', {}, ['Proficiencies'])]);
+
+      function commit(msg) {
+        a.armorProf = armourList; a.weaponProf = weaponList; a.langProf = langList;
+        if (a.build) {
+          a.build.armorProf = armourList.slice();
+          a.build.weaponProf = weaponList.slice();
+          a.build.langProf = langList.slice();
+        }
+        VT.gear.recompute(a);
+        save();
+        if (msg) toast(msg, 'ok');
+        render();
+      }
+
+      function toggles(label, list, kinds, hint) {
+        var row = el('div', { style: { marginBottom: '8px' } }, [
+          el('div', { class: 'muted' }, [label])
+        ]);
+        kinds.forEach(function (k) {
+          var on = list.indexOf(k) >= 0;
+          row.appendChild(el('span', {
+            class: 'chip' + (on ? ' good on' : ''), title: hint,
+            onClick: function () {
+              var i = list.indexOf(k);
+              if (i >= 0) list.splice(i, 1); else list.push(k);
+              commit();
+            }
+          }, [U.cap(k)]));
+        });
+        /* Anything granted by name rather than by kind - a race's longsword
+           training, or something a DM handed out - removable the same way. */
+        list.filter(function (k) { return kinds.indexOf(k) < 0; }).forEach(function (k) {
+          row.appendChild(el('span', {
+            class: 'chip good on', title: 'Click to remove',
+            onClick: function () {
+              var i = list.indexOf(k);
+              if (i >= 0) list.splice(i, 1);
+              commit();
+            }
+          }, [U.cap(k) + ' ×']));
+        });
+        pc.appendChild(row);
+      }
+
+      toggles('Armour', armourList, P.ARMOUR_KINDS,
+        'Wearing armour you are not trained in: disadvantage on Strength and ' +
+        'Dexterity checks, saves and attacks, and no spellcasting.');
+      toggles('Weapons', weaponList, P.WEAPON_KINDS,
+        'A weapon you are not trained in does not add your proficiency bonus.');
+
+      /* Languages, and named weapons, added by typing. */
+      function adder(label, list, placeholder, records) {
+        var typed = '';
+        var input = el('input', { type: 'text', class: 'grow', placeholder: placeholder,
+          onInput: function (e) { typed = e.target.value; } });
+        var row = el('div', { class: 'row' }, [el('label', {}, [label]), input,
+          el('button', { class: 'btn sm', onClick: function () {
+            var v = P.clean(typed);
+            if (!v) return;
+            if (list.indexOf(v) < 0) list.push(v);
+            input.value = ''; typed = '';
+            commit('Proficient with ' + U.cap(v) + '.');
+          } }, ['Add'])]);
+        pc.appendChild(row);
+        /* When the data is connected, offer the real list rather than making
+           the player spell "Draconic" correctly. */
+        if (records && records.length) {
+          pc.appendChild(addPicker(label + ' from your books', records, function (rec) {
+            var v = P.clean(rec.name);
+            if (list.indexOf(v) < 0) list.push(v);
+            commit('Proficient with ' + U.cap(v) + '.');
+          }));
+        }
+      }
+
+      var known = el('div', { style: { marginBottom: '6px' } });
+      if (langList.length) {
+        langList.forEach(function (l) {
+          known.appendChild(el('span', {
+            class: 'chip good on', title: 'Click to remove',
+            onClick: function () {
+              langList = langList.filter(function (x) { return x !== l; });
+              commit();
+            }
+          }, [U.cap(l) + ' ×']));
+        });
+      } else {
+        known.appendChild(el('span', { class: 'muted' }, ['No languages.']));
+      }
+      pc.appendChild(el('div', { class: 'muted' }, ['Languages']));
+      pc.appendChild(known);
+      if (a.langChoices) {
+        pc.appendChild(el('div', { class: 'warn' }, [
+          a.langChoices + ' language' + (a.langChoices > 1 ? 's' : '') +
+          ' of your choice still to pick — your race or background grants them ' +
+          'without saying which.'
+        ]));
+      }
+      adder('Language', langList, 'Elvish',
+        FT.loaded ? (FT.get('language') || []) : null);
+      adder('Weapon', weaponList, 'Longsword', null);
+
+      pc.appendChild(el('p', { class: 'muted' }, [
+        'Class, race and background training is worked out for you and comes back ' +
+        'on a level-up. What you add here is kept.'
+      ]));
+      view.appendChild(pc);
     }
 
     /* --- expertise --- */

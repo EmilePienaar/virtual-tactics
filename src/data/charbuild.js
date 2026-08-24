@@ -315,6 +315,34 @@
       if (a.toolProf.indexOf(t) < 0) a.toolProf.push(t);
     });
 
+    /* Armour, weapons and languages. The class side comes from
+       multiclass.proficiencies (only the class you started as grants a full
+       set); the race and background sides are read from their own records.
+       Anything added by hand on the Edit tab arrives on the choices and is
+       merged in last, so a hand-granted proficiency survives a level-up. */
+    if (VT.proficiency) {
+      var pr = VT.proficiency.gather({
+        classes: a.classes, race: c.race, subrace: c.subrace || baseSubrace(c.race),
+        background: c.background
+      });
+      a.armorProf = pr.armor;
+      a.weaponProf = pr.weapons;
+      /* `langProf` rather than `languages`, because a converted monster already
+         owns `languages` and it is prose - "Common, Draconic, telepathy 120
+         ft." - not a list. Two meanings on one key is how a statblock ends up
+         with half a sentence in it. */
+      a.langProf = pr.languages;
+      /* "Two languages of your choice" has nothing to resolve to, so it is
+         carried as a count and the sheet asks for the answer. */
+      a.langChoices = Math.max(0, pr.languageChoices - (c.langProf || []).length);
+      ['armorProf', 'weaponProf', 'langProf'].forEach(function (key) {
+        (c[key] || []).forEach(function (v) {
+          var w = VT.proficiency.clean(v);
+          if (w && a[key].indexOf(w) < 0) a[key].push(w);
+        });
+      });
+    }
+
     var faces = (primary && primary.cls.hd && primary.cls.hd.faces) || 8;
     a.hitDie = faces;
     var conMod = SRD.mod(a.abilities.con);
@@ -337,7 +365,10 @@
     var dexMod = SRD.mod(a.abilities.dex);
     a.actions = [];
     (c.weapons || []).forEach(function (w) {
-      var act = CV.weapon(w, { str: strMod, dex: dexMod, prof: prof });
+      /* A weapon you were never trained with still swings, it just does not
+         add your proficiency bonus. */
+      var trained = !VT.proficiency || VT.proficiency.weaponOk(a, w);
+      var act = CV.weapon(w, { str: strMod, dex: dexMod, prof: trained ? prof : 0 });
       if (act) a.actions.push(act);
     });
 
@@ -468,6 +499,9 @@
       spells: (c.spells || []).map(ref),
       skillProf: (c.skillProf || []).slice(),
       toolProf: (c.toolProf || []).slice(),
+      armorProf: (c.armorProf || []).slice(),
+      weaponProf: (c.weaponProf || []).slice(),
+      langProf: (c.langProf || []).slice(),
       asi: U.clone(c.asi || []),
       expertise: (c.expertise || []).slice()
     };
@@ -503,6 +537,9 @@
       picks: U.clone(refs.picks || {}),
       skillProf: (refs.skillProf || []).slice(),
       toolProf: (refs.toolProf || []).slice(),
+      armorProf: (refs.armorProf || []).slice(),
+      weaponProf: (refs.weaponProf || []).slice(),
+      langProf: (refs.langProf || []).slice(),
       asi: U.clone(refs.asi || []),
       expertise: (refs.expertise || []).slice(),
       race: get('race', refs.race, 'race'),
@@ -601,6 +638,12 @@
     r.choices.level = totalLevelOf(r.choices);
     r.choices.skillProf = (actor.skillProf || refs.skillProf || []).slice();
     r.choices.toolProf = (actor.toolProf || refs.toolProf || []).slice();
+    /* Carried the same way tools are: the merged list goes back in as the
+       hand-added set, so a proficiency granted on the Edit tab survives, and
+       one the class grants is re-derived anyway. */
+    r.choices.armorProf = (actor.armorProf || refs.armorProf || []).slice();
+    r.choices.weaponProf = (actor.weaponProf || refs.weaponProf || []).slice();
+    r.choices.langProf = (actor.langProf || refs.langProf || []).slice();
 
     var damage = Math.max(0, actor.hpMax - actor.hp);
     r.choices.coins = actor.coins;

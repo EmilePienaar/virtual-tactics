@@ -86,6 +86,10 @@
     a.conditions = a.conditions || [];
     a.skillProf = a.skillProf || [];
     a.expertise = a.expertise || [];
+    /* Entries saved before proficiencies existed carry no lists. Derive them
+       from the build where the compendium can still resolve it, and otherwise
+       leave them absent - absent costs nothing, a guess costs attack bonuses. */
+    if (VT.proficiency) VT.proficiency.backfill(a);
     a.coins = a.coins || VT.coin.emptyPurse();
     a.slotsUsed = a.slotsUsed || {};
     a.used = a.used || {};
@@ -204,6 +208,7 @@
     asiPanel(a);
     expertisePanel(a);
     skillPanel(a);
+    proficiencyPanel(a);
     toolPanel(a);
     deathPanel(a);
     resourcePanel(a);
@@ -621,6 +626,123 @@
     p.appendChild(el('p', { class: 'tiny' }, [
       'Filled pip: proficient. Gold pip: expertise. Passive Perception ' +
       VT.actor.passivePerception(a) + '.'
+    ]));
+    work.appendChild(p);
+  }
+
+  /* --- languages, armour and weapons ---
+     The desk-sized twin of Tale Sheet's Proficiencies card. Armour and weapons
+     are shown as every kind with the trained ones lit, because "no heavy" is
+     the answer to "why is my wizard rolling badly", and a list of only what you
+     have cannot say it.
+
+     Each change goes back through gear.recompute(), which re-reads the armour
+     penalty and puts each weapon's proficiency bonus back on or takes it off. */
+  function proficiencyPanel(a) {
+    var PR = VT.proficiency;
+    if (!PR) return;
+    /* Held locally and written onto the character only when something is
+       actually changed - opening the panel must not turn "we were never told"
+       into "trained in nothing". */
+    var armourList = (a.armorProf || []).slice();
+    var weaponList = (a.weaponProf || []).slice();
+    var langList = (a.langProf || []).slice();
+
+    var p = el('div', { class: 'panel' }, [el('h3', {}, ['Proficiencies'])]);
+    if (a.armorUnskilled) p.appendChild(el('div', { class: 'warn-box' }, [a.armorUnskilled.note]));
+    /* Creatures and hand-imported statblocks have no training recorded, which
+       is not the same as being untrained - say which it is rather than letting
+       four empty rows imply the wrong one. */
+    if (!Array.isArray(a.armorProf) && !Array.isArray(a.weaponProf)) {
+      p.appendChild(el('p', { class: 'tiny' }, [
+        'Nothing recorded — this entry came in as a statblock rather than a build, ' +
+        'so no penalty is applied. Anything you switch on below starts being enforced.'
+      ]));
+    }
+
+    function commit() {
+      a.armorProf = armourList; a.weaponProf = weaponList; a.langProf = langList;
+      if (a.build) {
+        a.build.armorProf = armourList.slice();
+        a.build.weaponProf = weaponList.slice();
+        a.build.langProf = langList.slice();
+      }
+      VT.gear.recompute(a);
+      saveDraw();
+    }
+
+    function chips(label, list, kinds, hint) {
+      p.appendChild(el('div', { class: 'tiny' }, [label]));
+      var box = el('div', { class: 'chiprow' });
+      kinds.forEach(function (k) {
+        var on = list.indexOf(k) >= 0;
+        box.appendChild(el('span', { class: 'chip' + (on ? ' good' : ''), title: hint,
+          onClick: function () {
+            var i = list.indexOf(k);
+            if (i >= 0) list.splice(i, 1); else list.push(k);
+            commit();
+          } }, [U.cap(k)]));
+      });
+      /* Granted by name rather than by kind - a race's longsword training, or
+         something a DM handed out. Click to take it away again. */
+      list.filter(function (k) { return kinds.indexOf(k) < 0; }).forEach(function (k) {
+        box.appendChild(el('span', { class: 'chip good', title: 'Click to remove',
+          onClick: function () {
+            list.splice(list.indexOf(k), 1);
+            commit();
+          } }, [U.cap(k) + ' ×']));
+      });
+      p.appendChild(box);
+    }
+
+    chips('Armour', armourList, PR.ARMOUR_KINDS,
+      'Armour you are not trained in: disadvantage on Strength and Dexterity ' +
+      'checks, saves and attacks, and no spellcasting.');
+    chips('Weapons', weaponList, PR.WEAPON_KINDS,
+      'A weapon you are not trained in does not add your proficiency bonus.');
+
+    p.appendChild(el('div', { class: 'tiny' }, ['Languages']));
+    var lbox = el('div', { class: 'chiprow' });
+    if (!langList.length) lbox.appendChild(el('span', { class: 'tiny' }, ['None recorded.']));
+    langList.forEach(function (l) {
+      lbox.appendChild(el('span', { class: 'chip good', title: 'Click to remove',
+        onClick: function () {
+          langList = langList.filter(function (x) { return x !== l; });
+          commit();
+        } }, [U.cap(l) + ' ×']));
+    });
+    p.appendChild(lbox);
+    if (a.langChoices) {
+      p.appendChild(el('div', { class: 'warn-box' }, [
+        a.langChoices + ' language' + (a.langChoices > 1 ? 's' : '') +
+        ' of your choice still to pick — the race or background grants them ' +
+        'without saying which.'
+      ]));
+    }
+
+    /* Adding by hand. Languages and named weapons are open-ended lists, so
+       there is nothing to toggle - you type what the DM gave you. */
+    function adder(label, list, placeholder) {
+      var typed = '';
+      var input = el('input', { type: 'text', class: 'grow', placeholder: placeholder,
+        onInput: function (e) { typed = e.target.value; } });
+      p.appendChild(el('div', { class: 'linerow' }, [
+        el('span', { class: 'tiny' }, [label]), input,
+        P.btn('Add', function () {
+          var v = PR.clean(typed);
+          if (!v) return;
+          if (list.indexOf(v) < 0) list.push(v);
+          flash('Proficient with ' + U.esc(U.cap(v)) + '.');
+          commit();
+        }, 'sm primary')
+      ]));
+    }
+    adder('Language', langList, 'Elvish');
+    adder('Weapon', weaponList, 'Longsword');
+
+    p.appendChild(el('p', { class: 'tiny' }, [
+      'Class, race and background training is worked out on the Character tab and ' +
+      'comes back on a level-up. What you add here is kept.'
     ]));
     work.appendChild(p);
   }

@@ -43,6 +43,10 @@ Things that work and have been checked against real data.
 - **Equipment** — worn or carried, equip and unequip without deleting, heavy
   armour stealth disadvantage, Strength-requirement speed penalty, and both
   correctly suppressing Unarmored Movement and Fast Movement.
+- **Proficiencies** — languages, tools, weapons and armour, worked out from
+  class, race and background and editable by hand. A weapon you are not trained
+  with loses your proficiency bonus; armour you are not trained with is
+  disadvantage on Strength and Dexterity rolls, and no spellcasting.
 - **Magic item effects** — ability scores, AC, saves, resistances, speed, spell
   attack and DC, gated on attunement or being worn.
 - **Item actions** — wands and staves offer their spells with charges.
@@ -93,6 +97,17 @@ It works, but the record carries a `save` and `dc` that are not real.
 are separate; only the second puts it on the sheet. The Edit tab's Tool picker
 grants both.
 
+**Nothing spends a language.** "Two of your choice" is counted and shown as
+still-to-pick, but nothing stops you adding three, and nothing checks that what
+you typed is a real language. Deliberate — a DM invents languages, and the
+alternative is refusing the one the table actually uses.
+
+**Armour proficiency is not inferred downwards.** A class trained in heavy
+armour is, in every list the books print, also trained in light and medium — but
+nothing in the data says so, so nothing here assumes it. In practice every class
+record lists all three, so this has not bitten; a homebrew class that lists only
+"heavy" would leave its wearer penalised in leather.
+
 ---
 
 ## Hazards
@@ -119,6 +134,10 @@ rules at load to scope them under `#sheetHost` — see the design notes. Do not
 anything it computes must be *recomputed from a base*, never accumulated.
 `baseSpeed` and `baseAbilities` exist for exactly this. A version that did
 `speed = speed + bonus` sent a barbarian to zero after two equip cycles.
+
+**A monster's `languages` is prose, a character's `langProf` is a list.** They
+are different fields for that reason. Writing a character's language list onto
+`languages` puts half a sentence into a statblock — see the design notes.
 
 **`convert.crOf` returns a string.** `"1/2"`, `"24"`, or null. Comparing to a
 number half-works: `"24" > 1` coerces, `"1/2" > 0.25` is `NaN > 0.25` and is

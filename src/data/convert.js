@@ -424,7 +424,11 @@
   }
 
   /* ---- weapon item ------------------------------------------------------ */
-  /* opts: {str, dex, prof} - the wielder's numbers. */
+  /* opts: {str, dex, prof} - the wielder's numbers. `prof` is what the wielder
+     actually adds, so a caller that knows the character has no training with
+     this weapon passes 0. How much of `toHit` that share was is recorded on
+     the action, so rules/proficiency.js can take it back off or put it back on
+     when the training changes, without rebuilding the character. */
   function weapon(item, opts) {
     opts = opts || {};
     if (!item || (!item.dmg1 && !item.weapon)) return null;
@@ -458,8 +462,11 @@
       dmg: expr,
       dmgType: DMG[item.dmgType] || 'bludgeoning',
       cost: 'action',
-      itemName: item.name
+      itemName: item.name,
+      profBonus: prof,
+      weaponCategory: item.weaponCategory || null
     };
+    if (!prof) act.notProficient = true;
     if (isRanged || (thrown && !item.dmg1)) {
       act.kind = 'ranged';
       var rng = String(item.range || '30/120').split('/');

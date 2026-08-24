@@ -146,6 +146,15 @@
     var map = combat.map, adv = false, dis = false, why = [];
     var ranged = action.kind === 'ranged';
 
+    /* Armour the attacker was never trained in: disadvantage on anything using
+       Strength or Dexterity, which is every weapon attack. A spell attack uses
+       the casting ability instead, and unfamiliar armour stops the casting
+       outright - which the sheet enforces, not the map. */
+    if (attacker.armorUnskilled && action.spellLevel == null &&
+        (action.kind === 'melee' || action.kind === 'ranged')) {
+      dis = true; why.push('unfamiliar armour');
+    }
+
     (attacker.conditions || []).forEach(function (c) {
       var d = SRD.CONDITIONS[c]; if (!d) return;
       if (d.atkFrom > 0) { adv = true; why.push(d.name); }

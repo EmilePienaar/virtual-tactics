@@ -22,6 +22,7 @@ const ENGINE = [
   'src/render/spriteart.js',
   'src/rules/actor.js',
   'src/rules/gear.js',
+  'src/rules/proficiency.js',
   'src/rules/itemfx.js',
   'src/rules/resist.js',
   'src/data/tags.js',

@@ -931,6 +931,82 @@ would be wrong, so they are deliberately left out rather than forgotten.
 
 ---
 
+## Proficiency, and what it costs to lack it
+
+Four lists hang off a character: languages, tools, weapons and armour. Only
+tools were there before, because a thieves' tools check is a thing you roll.
+The absence of the other three was quietly generous. A wizard could put on plate
+and get the full armour class with no penalty at all, and every weapon on the
+sheet added the proficiency bonus whether or not the character had ever been
+taught to hold it.
+
+The rules for the two that matter are short:
+
+- **A weapon you are not proficient with does not add your proficiency bonus**
+  to the attack roll. Nothing else about it changes — the damage die and your
+  ability modifier are the same.
+- **Armour you are not proficient with** gives disadvantage on any ability
+  check, saving throw or attack roll that uses Strength or Dexterity, and you
+  cannot cast spells while wearing it. The armour class is *not* reduced; the
+  plate still stops swords, you are just bad at wearing it. Shields count
+  separately.
+
+Both are implemented as recomputation, never as an edit in place, because
+`gear.recompute()` runs again every time anything is equipped — the same trap
+that once sent a barbarian to zero speed. `convert.weapon` records how much of
+an attack's `toHit` was the proficiency bonus, on `profBonus`, and
+`proficiency.retune()` sets that share to what it should be now. Running it
+three times is the same as running it once. The armour penalty is a flag,
+`actor.armorUnskilled`, rebuilt from scratch on every recompute and read by the
+sheet's roll helpers and by the battle map's advantage calculation.
+
+### Absent is not empty
+
+A missing list means nothing is known about this character's training, and an
+unknown must never become a penalty. A monster has no `armorProf`, and neither
+does a character imported as a flat statblock; both go unjudged. An *empty*
+list is a real answer — a character trained in no weapons at all really does
+swing a sword without the bonus.
+
+This distinction is load-bearing in the UI. Neither editor may write `[]` onto
+a character merely for having been opened: the panels hold their own copies and
+write back only when something is actually changed. Otherwise a legacy save
+would lose every attack bonus it had the moment you looked at it.
+
+For characters saved before any of this existed, `proficiency.backfill()` works
+the lists out from the stored build references — if the compendium can still
+resolve them. If it cannot, the lists stay absent, because a guess here is a
+penalty and a blank is not.
+
+### The field is `langProf`, not `languages`
+
+A converted monster already owns `languages`, and there it is prose:
+`"Common, Draconic, telepathy 120 ft."` A character's language proficiencies are
+a list. Two meanings on one key is how a statblock ends up with half a sentence
+in it, so the character's list sits with its siblings — `skillProf`, `toolProf`,
+`armorProf`, `weaponProf`, `langProf`.
+
+### What the books actually write
+
+The same proficiency appears half a dozen ways across 5etools: `"light"`,
+`"martial weapons"` (the 2024 phrasing), `"longsword|phb"`,
+`{"proficiency": "shields"}`, `{"light": true}` on a race, and
+`"{@item thieves' tools|PHB}"` inside prose. All of them mean one lowercase word
+or item name, so `proficiency.clean()` normalises hard and everything else
+compares on the result.
+
+`multiclass.proficiencies()` had worked out the class side of this for a while
+and had no callers at all — only the first class grants a full set, and no
+edition grants saving throws on a multiclass. Race and background are read here,
+because nothing else read them.
+
+"Two languages of your choice" is written `{"anyStandard": 2}` and there is
+nothing to resolve it to. It is counted rather than dropped, and the sheet says
+"2 still to pick" — silently discarding it is how a character ends up
+mysteriously missing Elvish.
+
+---
+
 ## The ranger's companion
 
 Three different things are called a companion and they do not work alike: the
@@ -1346,6 +1422,10 @@ damage on a success, healing, temporary HP, resistance / vulnerability /
 immunity, conditions, opportunity attacks, Dash / Dodge / Disengage, cover, sneak
 attack, regeneration, falling, and hazardous terrain.
 
+Proficiency counts: a weapon you are not trained with loses your proficiency
+bonus, and armour you are not trained with is disadvantage on everything using
+Strength or Dexterity, with no spellcasting.
+
 Everything is a toggle in **Settings**:
 
 - **High ground** — advantage from 5 ft up. *House rule, on by default, because it's
@@ -1399,6 +1479,8 @@ src/
   render/  tileart.js  spriteart.js           procedurally generated tiles and characters
            camera.js  renderer.js             pan/zoom/rotate, the isometric painter
   rules/   srd.js  actor.js  combat.js  ai.js statblocks, creatures, the engine, monster turns
+           gear.js  itemfx.js  resist.js       what is worn, what items do, damage defences
+           proficiency.js                      languages, tools, weapons, armour — and the penalties
   data/    tags.js                            5etools {@markup} parser -> text, HTML, mechanics
            fivetools.js                       folder/URL ingest, indexing, search, IDB cache
            convert.js                         5etools records -> Virtual Tactics statblocks

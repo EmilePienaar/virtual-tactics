@@ -15,7 +15,12 @@
    disadvantage on Stealth, and wearing armour heavier than your Strength can
    support costs you 10 feet of speed - and a monk's Unarmored Movement and a
    barbarian's Fast Movement both stop applying, which is the whole reason those
-   features say "unarmoured" in their names. */
+   features say "unarmoured" in their names.
+
+   A fourth arrived later and lives in rules/proficiency.js: armour you were
+   never trained to wear. recompute() raises the flag and retunes the weapon
+   attacks, because both depend on what is equipped and both have to be worked
+   out afresh each time rather than adjusted. */
 (function () {
   'use strict';
   var VT = window.VT, U = VT.util, SRD = VT.srd;
@@ -58,6 +63,11 @@
       if (item.strength) g.strength = parseInt(item.strength, 10) || 0;
     } else if (slot === 'shield') {
       g.ac = item.ac || 2;
+    } else if (slot === 'weapon') {
+      /* "simple" or "martial", kept so the inventory row can say whether you
+         are trained with what you are holding. Entries saved before this
+         existed have no category and are left unjudged rather than guessed at. */
+      if (item.weaponCategory) g.category = String(item.weaponCategory);
     }
     return g;
   }
@@ -182,6 +192,18 @@
     /* Wands and staves offer their spells while they are live. Recomputed here
        so attuning or unattuning one makes its action appear or disappear. */
     if (VT.itemfx && VT.itemfx.allActions) actor.itemActions = VT.itemfx.allActions(actor);
+
+    /* Wearing armour you were never trained in. A flag rather than an edited
+       number, because the penalty is disadvantage on three different kinds of
+       roll plus a bar on casting, and because this function runs again on
+       every equip - see the note in rules/proficiency.js. Recomputed from
+       scratch each time, so taking the armour off clears it. */
+    if (VT.proficiency) {
+      actor.armorUnskilled = VT.proficiency.armourPenalty(actor);
+      /* Picking up a weapon you cannot use should change the attack bonus, and
+         so should a change of training on the Edit tab. */
+      VT.proficiency.retune(actor);
+    }
     return actor;
   }
 
