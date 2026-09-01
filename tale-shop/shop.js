@@ -293,8 +293,7 @@
                  ? 'Took ' + want + ' × ' + good.name
                  : 'Bought ' + want + ' × ' + good.name + ' — pay ' + COIN.format(total, sys()),
                loot: SHOPS.lootCode({ from: shop.name,
-                 items: [{ name: good.name, source: good.source || null,
-                           qty: want, note: good.note || '' }] }) });
+                 items: [itemLine(good, want)] }) });
     postChat(line);
   }
 
@@ -736,12 +735,43 @@
      sends. A richer one carrying the whole item record would be easier to make
      and would test a different path from the one players take, which is the
      opposite of useful. */
+  /* One line of a loot code for one good.
+
+     Name and printing are enough for anything out of the books: the sheet looks
+     it up in its own compendium and gets a real item back. They are NOT enough
+     for a forged or homebrew item, because the buyer has probably never seen
+     it - it exists in the shop's compendium and nowhere else, so the name
+     resolves to nothing and it lands as a bare line of text. That was the
+     "custom items still do not work" case.
+
+     So a homebrew item travels WITH its record. The code is longer, which does
+     not matter: it is pasted, not synced, and the 500-character budget applies
+     to sync only. */
+  function itemLine(good, qty) {
+    var line = { name: good.name, source: good.source || null,
+                 qty: Math.max(1, qty || 1), note: good.note || '' };
+
+    /* A good forged in Shopsmith carries its own record on `item`, and that
+       record survives the export into Tale Shop. It is the ONLY copy that
+       exists - a forged item lives in Shopsmith's library, not in anybody's
+       compendium - so it must be the first thing we look at. Missing it is why
+       forged items arrived as bare names with nothing to click. */
+    var rec = good.item || null;
+
+    /* Otherwise ask the compendium, and carry the record only when it came
+       from homebrew: __hb marks the records the buyer cannot look up for
+       themselves. Book items need nothing but a name and a printing. */
+    if (!rec && FT.loaded && FT.byName) {
+      var found = FT.byName('item', good.name, good.source || null) ||
+                  FT.byName('item', good.name, null);
+      if (found && found.__hb) rec = found;
+    }
+    if (rec) line.item = rec;
+    return line;
+  }
+
   function goodCode(shop, good, qty) {
-    return SHOPS.lootCode({
-      from: shop.name,
-      items: [{ name: good.name, source: good.source || null,
-                qty: Math.max(1, qty || 1), note: good.note || '' }]
-    });
+    return SHOPS.lootCode({ from: shop.name, items: [itemLine(good, qty)] });
   }
 
   /* Everything on the shelves in one code, for setting a character up in a
@@ -749,10 +779,7 @@
   function stockCode(shop) {
     return SHOPS.lootCode({
       from: shop.name,
-      items: shop.items.map(function (g) {
-        return { name: g.name, source: g.source || null,
-                 qty: g.qty > 0 ? g.qty : 1, note: g.note || '' };
-      })
+      items: shop.items.map(function (g) { return itemLine(g, g.qty > 0 ? g.qty : 1); })
     });
   }
 

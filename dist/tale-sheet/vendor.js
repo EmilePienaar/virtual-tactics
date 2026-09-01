@@ -1478,10 +1478,15 @@
 
      Kept rather than looked up because the sheet has to work for a player with
      no data connected: an item bought from the shop and collected on a laptop
-     with no 5etools folder should still be readable. Capped, because a saved
-     character rides in symbiote storage and a few magic items with full text
-     would otherwise be most of the blob. */
-  var DESC_CAP = 700;
+     with no 5etools folder should still be readable.
+
+     Still capped - a saved character rides in symbiote storage and a few magic
+     items with full text would otherwise be most of the blob - but generously,
+     because this is now only the fallback. When the compendium is loaded the
+     sheet reads the item's own record and shows the whole thing, so the cap
+     only bites for someone with no data at all, and 4000 characters covers
+     all but a handful of the longest artifacts. */
+  var DESC_CAP = 4000;
 
   function describeItem(item) {
     if (!item || !VT.tags || !VT.tags.toText) return '';

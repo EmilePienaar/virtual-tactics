@@ -194,7 +194,14 @@ details > div { padding: 0 8px 8px; }
 /* A number box in a rollable row must not eat the label. Inputs are width:100%
    by default, which inside a flex row resolves to "all of it" and squeezes the
    item name to nothing. */
-.rollrow input[type=number] { width: 58px; text-align: center; flex: none; }
+.rollrow input[type=number],
+.rollrow input.num { width: 58px; text-align: center; flex: none; }
+/* Number fields are plain text inputs now - no increment arrows to click at in
+   a panel this narrow. Belt and braces for anything still declaring itself a
+   number, since some skins draw the spinner regardless. */
+input.num::-webkit-outer-spin-button,
+input.num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input.num { -moz-appearance: textfield; appearance: textfield; }
 
 /* ---- an assumed form, shown beside the character rather than replacing it ---- */
 .card.wildshape {
@@ -233,3 +240,43 @@ details > div { padding: 0 8px 8px; }
   border-left: 2px solid var(--line);
   white-space: pre-wrap;
 }
+
+/* ---- the pop-out reader ----
+   A panel 320px wide has room for one thing at a time, so an item's text takes
+   the whole of it and gives it back on Close. Fixed rather than inline so a
+   long entry scrolls itself instead of pushing the pack off screen. */
+.modal-back {
+  position: fixed; inset: 0; z-index: 60;
+  background: rgba(8, 7, 12, .72);
+  display: flex; align-items: center; justify-content: center;
+  padding: 14px;
+}
+.modal {
+  width: 100%; max-width: 460px; max-height: 88%;
+  display: flex; flex-direction: column;
+  background: var(--panel, #16151f);
+  border: 1px solid var(--gold-dim); border-radius: 6px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, .7);
+}
+.modal-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 11px; border-bottom: 1px solid var(--line);
+}
+.modal-title {
+  flex: 1; min-width: 0; font-family: var(--serif); font-size: 13px;
+  color: var(--gold); letter-spacing: .04em;
+}
+.modal-sub {
+  padding: 6px 11px 0; font-size: 10px; color: var(--ink-faint);
+  text-transform: lowercase; letter-spacing: .04em;
+}
+.modal-body {
+  padding: 9px 11px 12px; overflow-y: auto;
+  font-size: 12px; line-height: 1.55; color: var(--ink-dim);
+  white-space: pre-wrap;
+}
+
+/* The control that opens it. Gold-edged so it reads as "there is more here"
+   rather than sitting in the row like another toggle. */
+.btn.sm.read { border-color: var(--gold-dim); color: var(--gold); }
+.btn.sm.read:hover { background: var(--gold-dim); color: #151019; }

@@ -38,15 +38,18 @@
 
 const fs = require('fs');
 
-const PORT = (() => {
-  const i = process.argv.indexOf('--port');
-  return i > 0 ? Number(process.argv[i + 1]) : 8080;
-})();
-
-const WANT = (() => {
-  const i = process.argv.indexOf('--target');
-  return i > 0 ? process.argv[i + 1] : null;
-})();
+/* Flags may appear anywhere, so the command is simply the first argument that
+   is not a flag or a flag's value. Requiring them in a fixed order is the kind
+   of papercut that wastes a minute every time. */
+const ARGV = process.argv.slice(2);
+const FLAGS = { '--port': null, '--target': null, '--file': null };
+const REST = [];
+for (let i = 0; i < ARGV.length; i++) {
+  if (Object.prototype.hasOwnProperty.call(FLAGS, ARGV[i])) { FLAGS[ARGV[i]] = ARGV[++i]; continue; }
+  REST.push(ARGV[i]);
+}
+const PORT = FLAGS['--port'] ? Number(FLAGS['--port']) : 8080;
+const WANT = FLAGS['--target'];
 
 function die(msg, code) {
   console.error(msg);
@@ -152,7 +155,7 @@ function show(v) {
 }
 
 async function main() {
-  const cmd = process.argv[2];
+  const cmd = REST[0];
   if (!cmd || cmd === 'help' || cmd === '--help') {
     console.log(fs.readFileSync(__filename, 'utf8').split('*/')[0].replace(/^\/\* ?/, ''));
     return;
@@ -173,13 +176,9 @@ async function main() {
 
   try {
     if (cmd === 'eval') {
-      let expr;
-      const fi = process.argv.indexOf('--file');
-      if (fi > 0) expr = fs.readFileSync(process.argv[fi + 1], 'utf8');
-      else {
-        expr = process.argv.slice(3).filter(a =>
-          a !== '--port' && a !== '--target' && a !== String(PORT) && a !== WANT).join(' ');
-      }
+      const expr = FLAGS['--file']
+        ? fs.readFileSync(FLAGS['--file'], 'utf8')
+        : REST.slice(1).join(' ');
       if (!expr.trim()) die('Nothing to evaluate. Pass an expression or --file <path>.');
       /* Wrapped so a bare statement block and a bare expression both work. */
       show(await evaluate(session, '(function(){ return (' + expr + '); })()')

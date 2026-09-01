@@ -441,6 +441,23 @@
      make the rebuild survivable: note which field had focus and where the
      caret was, and put both back afterwards. Fields opt in with `data-k`, a
      key stable across renders. Anything without one behaves as before. */
+  /* Where the panel was scrolled to. `#view` is the scrolling element - the
+     body is overflow:hidden - so a rebuild resets it to the top unless it is
+     put back.
+
+     This is the other half of the focus bug, and the more visible half. Click a
+     skill pip 1800px down the Edit tab and the view is destroyed, rebuilt and
+     returned to the top: the click worked, the state changed, and the row you
+     were aiming at is now off screen. It reads as "only one click registers,
+     and you have to leave the tab and come back", which is exactly what it
+     feels like and not at all what is happening. */
+  function scrollTop() { return view ? view.scrollTop : 0; }
+
+  function restoreScroll(y) {
+    if (!view || !y) return;
+    view.scrollTop = y;
+  }
+
   function focusedField() {
     var n = document.activeElement;
     if (!n || !view.contains(n) || !n.getAttribute) return null;
@@ -457,18 +474,22 @@
     if (!keep) return;
     var n = view.querySelector('[data-k="' + keep.key + '"]');
     if (!n) return;
-    n.focus();
+    /* preventScroll matters: focusing a field near the bottom would otherwise
+       drag the panel to it, undoing the scroll we just restored. */
+    try { n.focus({ preventScroll: true }); } catch (e) { n.focus(); }
     if (keep.start == null) return;
     try { n.setSelectionRange(keep.start, keep.end); } catch (e) {}
   }
 
   function render() {
     var keep = focusedField();
+    var y = scrollTop();
     syncChrome();
     syncCharPick();
     U.clear(view);
     ({ sheet: renderSheet, edit: renderEdit, party: renderParty,
        build: renderBuild, setup: renderSetup }[S.tab] || renderSheet)();
+    restoreScroll(y);
     restoreField(keep);
     if (S.tab === 'sheet' || S.tab === 'edit') shareSoon();
   }
@@ -532,7 +553,7 @@
       el('span', {}, [a.hp + ' / ' + a.hpMax + (a.tempHp ? '  (+' + a.tempHp + ' temp)' : '')])
     ]));
     var amt = el('input', {
-      type: 'number', value: S.hpAmount, min: 0,
+      type: 'text', inputmode: 'numeric', class: 'num', value: S.hpAmount,
       onInput: function (e) { S.hpAmount = Math.max(0, parseInt(e.target.value, 10) || 0); }
     });
     who.appendChild(el('div', { class: 'hpctl' }, [
@@ -1375,7 +1396,7 @@
       el('button', { class: 'btn sm danger', onClick: function () {
         sm.hp = Math.max(0, sm.hp - amount); save(); render();
       } }, ['− Damage']),
-      el('input', { type: 'number', value: 5, min: 0,
+      el('input', { type: 'text', inputmode: 'numeric', class: 'num', value: 5,
         onInput: function (e) { amount = Math.max(0, parseInt(e.target.value, 10) || 0); } }),
       el('button', { class: 'btn sm', onClick: function () {
         sm.hp = Math.min(sm.hpMax, sm.hp + amount); save(); render();
@@ -1486,7 +1507,7 @@
         el('button', { class: 'btn sm danger', onClick: function () {
           c.hp = Math.max(0, c.hp - amount); save(); render();
         } }, ['− Damage']),
-        el('input', { type: 'number', value: 5, min: 0,
+        el('input', { type: 'text', inputmode: 'numeric', class: 'num', value: 5,
           onInput: function (e) { amount = Math.max(0, parseInt(e.target.value, 10) || 0); } }),
         el('button', { class: 'btn sm', onClick: function () {
           c.hp = Math.min(c.hpMax, c.hp + amount); save(); render();
@@ -1727,7 +1748,7 @@
         save(); render();
         if (w.hp === 0) toast('The form drops — you revert with the hit points you had', 'err');
       } }, ['\u2212 Damage']),
-      el('input', { type: 'number', value: 5, min: 0,
+      el('input', { type: 'text', inputmode: 'numeric', class: 'num', value: 5,
         onInput: function (e) { amount = Math.max(0, parseInt(e.target.value, 10) || 0); } }),
       el('button', { class: 'btn sm', onClick: function () {
         w.hp = Math.min(w.hpMax, w.hp + amount); save(); render();
@@ -1919,19 +1940,77 @@
     return card;
   }
 
-  /* One inventory row. Worn things get a Wear button; everything gets its own
-     words if we have them.
+  /* A pop-out reader.
 
-     Carried items used to render as a name and nothing else - no way to read
-     what the thing does, which for a potion or a magic item is the only part
-     that matters. The description is folded away so a full pack stays a list
-     rather than an essay, exactly as spells are on the Sheet tab. */
+     An item's text was folded under its row behind a 16px triangle, which was
+     the same control the spell list uses - and it works there, where every row
+     has one and you are scanning forty of them. On an inventory row it was
+     neither noticeable nor obviously attached to the item above it, and a long
+     magic item pushed the rest of the pack off screen when opened.
+
+     A panel this narrow has room for one thing at a time, so the text gets the
+     whole panel and gives it back on Close. That also removes the reason to
+     truncate: a scrolling box can hold a Deck of Many Things. */
+  function readerPanel(title, sub, text) {
+    var back = el('div', { class: 'modal-back' });
+    function close() {
+      document.removeEventListener('keydown', onKey, true);
+      back.remove();
+    }
+    function onKey(ev) { if (ev.key === 'Escape') { ev.stopPropagation(); close(); } }
+    document.addEventListener('keydown', onKey, true);
+
+    back.addEventListener('click', function (ev) { if (ev.target === back) close(); });
+    back.appendChild(el('div', { class: 'modal' }, [
+      el('div', { class: 'modal-head' }, [
+        el('span', { class: 'modal-title' }, [title]),
+        el('button', { class: 'btn sm', title: 'Close (Esc)', onClick: close }, ['Close'])
+      ]),
+      sub ? el('div', { class: 'modal-sub' }, [sub]) : null,
+      el('div', { class: 'modal-body' }, [text])
+    ]));
+    document.body.appendChild(back);
+    return back;
+  }
+
+  /* An item's words. The compendium is asked first and the copy stored on the
+     entry is the fallback, not the other way round: the stored one is capped
+     to keep saved characters small, while the compendium has the whole thing.
+     A player with no data connected still gets the stored copy. */
+  function itemText(e) {
+    if (FT && FT.loaded && FT.byName) {
+      var rec = FT.byName('item', e.name, e.source || null) ||
+                FT.byName('item', e.name, null);
+      if (rec) {
+        var full = '';
+        try { full = VT.tags.toText(rec.entries || []); } catch (err) { full = ''; }
+        if (full && full.trim()) return full.trim();
+      }
+    }
+    return e.desc || '';
+  }
+
+  /* One inventory row. Worn things get a Wear button; anything with words to
+     read gets a Read button that opens them. */
   function inventoryRow(a, e, what, onToggle) {
-    var head = el('div', { class: 'rollrow' }, [
+    var text = itemText(e);
+    return el('div', { class: 'rollrow' }, [
       el('span', { class: 'lbl' }, [
         e.name + (e.qty > 1 ? '  ×' + e.qty : ''),
         what ? el('span', { class: 'sub' }, ['  ' + what]) : null
       ]),
+      text
+        ? el('button', {
+            class: 'btn sm read', title: 'Read what it does',
+            onClick: function () {
+              readerPanel(e.name + (e.qty > 1 ? ' ×' + e.qty : ''),
+                [e.rarity, e.source, what].filter(Boolean).filter(function (v, i, all) {
+                  return all.indexOf(v) === i;
+                }).join(' \u00b7 '),
+                text);
+            }
+          }, ['Read'])
+        : null,
       onToggle
         ? el('button', {
             class: 'btn sm' + (e.equipped ? ' on' : ''),
@@ -1940,14 +2019,6 @@
           }, [e.equipped ? 'Worn' : 'Wear'])
         : null
     ]);
-    if (!e.desc) return head;
-    var wrap = el('div', {});
-    wrap.appendChild(head);
-    wrap.appendChild(el('details', { class: 'spellwrap' }, [
-      el('summary', { title: 'What it does' }, []),
-      el('div', { class: 'spelltext' }, [e.desc])
-    ]));
-    return wrap;
   }
 
   /* An item's charges, spent from the item rather than from you. */
@@ -2158,7 +2229,7 @@
       onInput: function (e) { b.name = e.target.value; }
     })));
     card.appendChild(labelled('Level', el('input', {
-      type: 'number', value: b.level, min: 1, max: 20,
+      type: 'text', inputmode: 'numeric', class: 'num', value: b.level,
       onInput: function (e) { b.level = U.clamp(parseInt(e.target.value, 10) || 1, 1, 20); }
     })));
 
@@ -3250,9 +3321,37 @@
     return input;
   }
 
+  /* A number you type, not one you click at.
+
+     These were `type=number`, which in a 320px in-game panel spends a third of
+     the field on increment arrows nobody uses - and there are nearly fifty of
+     them on the Edit tab alone. A text field with a numeric keypad hint gets
+     the same value in with none of the furniture.
+
+     Clamping happens on blur rather than on every keystroke, because clamping
+     while typing fights the typist: entering "15" into a field capped at 20
+     would be rewritten to "1" the moment the 1 landed. Mid-typing states like
+     "" and "-" are reported as 0 and left alone on screen. */
   function numInput(v, min, max, cb, step) {
-    return el('input', { type: 'number', value: v, min: min, max: max, step: step || 1,
-      onInput: function (e) { cb(parseFloat(e.target.value) || 0); } });
+    var input = el('input', {
+      type: 'text', inputmode: 'numeric', class: 'num',
+      value: v == null ? '' : String(v)
+    });
+    input.addEventListener('input', function () {
+      var raw = input.value.trim();
+      if (raw === '' || raw === '-' || raw === '+') { cb(0); return; }
+      var n = parseFloat(raw);
+      if (!isNaN(n)) cb(n);
+    });
+    input.addEventListener('blur', function () {
+      var n = parseFloat(input.value);
+      if (isNaN(n)) n = 0;
+      if (min != null) n = Math.max(min, n);
+      if (max != null) n = Math.min(max, n);
+      input.value = String(n);
+      cb(n);
+    });
+    return input;
   }
 
   function compactActionEditor(a, act, i) {
@@ -3552,6 +3651,17 @@
       }
       if (rec && VT.gear) {
         VT.gear.add(a, rec, { qty: qty, note: it.note || '' });
+        /* A forged item that arrived with its own record is kept, so the next
+           one resolves by name like anything else and every other character on
+           this sheet can see it too. Without this the record helps exactly the
+           one entry it rode in on.
+
+           upsert replaces by __hbId, which the shop's copy already carries, so
+           collecting the same item twice updates it rather than stacking a
+           second copy in the compendium. */
+        if (it.item && VT.homebrew && VT.homebrew.upsert) {
+          try { VT.homebrew.upsert('item', U.clone(it.item)); } catch (e) {}
+        }
       } else {
         /* Nothing to resolve against - keep what the shop told us, so the row
            can still say what it is even with no data connected. */
@@ -3645,7 +3755,7 @@
         })));
       }
 
-      var gmAmt = el('input', { type: 'number', value: 5, min: 0, style: { width: '52px' } });
+      var gmAmt = el('input', { type: 'text', inputmode: 'numeric', class: 'num', value: 5, style: { width: '52px' } });
       card.appendChild(el('div', { class: 'hpctl', style: { marginTop: '6px' } }, [
         el('button', { class: 'btn sm danger', onClick: function () {
           gmCommand(id, { cmd: 'damage', amount: parseInt(gmAmt.value, 10) || 0 });
