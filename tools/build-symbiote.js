@@ -142,6 +142,16 @@ function build(name) {
         fs.mkdirSync(path.dirname(dest), { recursive: true });
         fs.copyFileSync(path.join(SRD_SRC, f), dest);
       }
+      /* OGL 1.0a requires the licence to travel with the content. This is not
+         optional and not cosmetic: shipping the data without it is the one way
+         to turn a correctly-licensed bundle into an incorrectly-licensed one. */
+      const ogl = path.join(SRD_SRC, 'OGL.txt');
+      if (!fs.existsSync(ogl)) {
+        console.error('ERROR [' + name + ']: srd/ has data but no OGL.txt - ' +
+                      'the licence must ship with the content.');
+        process.exit(1);
+      }
+      fs.copyFileSync(ogl, path.join(SRD_OUT, 'OGL.txt'));
       SRD_SHIPPED[name] = wanted;
     }
   }

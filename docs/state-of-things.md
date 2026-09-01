@@ -62,9 +62,10 @@ Things that work and have been checked against real data.
 - **Items bought in a shop arrive as items** — wearable, attunable, and folding
   open to their own description. A shop sends a name and a printing; the sheet
   resolves it back into the record.
-- **A bundled SRD** — shipped in `srd/`, layered under whatever data the user
-  connects, de-duplicated so nothing appears twice. Ships empty from a source
-  checkout; see `srd/README.md`.
+- **A bundled SRD** — about 1,800 records in `srd/`, layered under whatever data
+  the user connects and de-duplicated so nothing appears twice. Extracted from a
+  5etools folder by `tools/extract-srd.js`, which copies only records carrying
+  the `srd` flag. The apps work out of the box with no data source at all.
 
 ---
 
@@ -104,11 +105,6 @@ It works, but the record carries a `save` and `dc` that are not real.
 are separate; only the second puts it on the sheet. The Edit tab's Tool picker
 grants both.
 
-**The SRD folder ships empty.** The loading, the layering and the
-de-duplication are all in place and tested; the content is not there until
-someone drops a data set into `srd/` and lists it in `srd/index.json`. Until
-then a fresh install still asks for a data source, exactly as before.
-
 **Nothing spends a language.** "Two of your choice" is counted and shown as
 still-to-pick, but nothing stops you adding three, and nothing checks that what
 you typed is a real language. Deliberate — a DM invents languages, and the
@@ -146,6 +142,17 @@ rules at load to scope them under `#sheetHost` — see the design notes. Do not
 anything it computes must be *recomputed from a base*, never accumulated.
 `baseSpeed` and `baseAbilities` exist for exactly this. A version that did
 `speed = speed + bonus` sent a barbarian to zero after two equip cycles.
+
+**Regenerating the SRD needs a 5etools folder.** `tools/extract-srd.js` filters
+one; it cannot conjure the content. The generated `srd/data/` is committed for
+exactly that reason — the same reasoning as committing `dist/`, so nobody else
+needs the inputs. Re-run it only to pick up upstream corrections.
+
+**The `srd` flag is the licence boundary, and it is the only thing enforcing
+it.** Only flagged records may be redistributed. Do not widen the filter, do not
+add `srd52` alongside `srd` without deciding what edition the bundle is, and do
+not drop the `srd: "Some Name"` rename — that rename is what keeps Product
+Identity out of the shipped data.
 
 **Any render destroys focus; that is why `data-k` exists.** `render()` clears
 the view and rebuilds it, so a field being typed into loses its focus and caret
@@ -207,5 +214,8 @@ fan supplement, included by the owner's explicit decision.
 
 `srd/` is the second deliberate exception, and a narrower one: the SRD is the
 freely shareable set, so it may travel with a build where a data folder may not.
-Only SRD-licensed material belongs there. The grep after a build change should
-now expect `homebrew/` and `srd/` and nothing else.
+Only SRD-licensed material belongs there, and `tools/extract-srd.js` is the only
+thing that should ever write it — it copies records flagged `srd` and nothing
+else. `srd/OGL.txt` is the Open Game License and must ship with the data; the
+build fails if it is missing. The grep after a build change should now expect
+`homebrew/` and `srd/` and nothing else.

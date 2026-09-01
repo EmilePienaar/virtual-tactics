@@ -1,51 +1,58 @@
 # Bundled SRD
 
-The free rules, in 5etools JSON shape, so the apps do something useful before
-anyone has pointed them at a data folder.
+The free rules, so the apps do something useful before anyone has pointed them
+at a data folder. Generated — do not hand-edit `data/`.
 
-**This folder ships empty in the source tree.** Drop an SRD data set in, list
-its files in `index.json`, and every build picks it up. Nothing else changes.
+## Regenerating
 
-## Why this folder may carry content when `data/` may not
-
-The SRD is shareable; published book content is not. The builds bundle no data
-set and never will — see *The line on content* in `docs/state-of-things.md`.
-This folder and `homebrew/` are the two deliberate exceptions, and this one is
-narrower: only put SRD-licensed material here.
-
-## Layout
-
-`index.json` maps a record kind to the files that hold it, relative to this
-folder:
-
-```json
-{
-  "item":       ["data/items.json", "data/items-base.json"],
-  "race":       ["data/races.json"],
-  "background": ["data/backgrounds.json"],
-  "spell":      ["data/spells/spells-srd.json"],
-  "creature":   ["data/bestiary/bestiary-srd.json"],
-  "class":      ["data/class/class-fighter.json"]
-}
+```
+node tools/extract-srd.js "<path to a 5etools data folder>"
 ```
 
-The kinds are the same ones `ARRAY_KEYS` in `src/data/fivetools.js` knows
-about: `item`, `race`, `background`, `spell`, `creature`, `class`, `feat`,
-`optionalfeature`, `condition`, `action`, `language`, `skill`, `sense`,
-`deity`, `variantrule`. A partial set is fine — list only what you have.
+The folder is the one containing `items.json`, `bestiary/` and `class/`.
 
-The files themselves are ordinary 5etools files: `{"spell": [...]}`,
-`{"item": [...], "baseitem": [...]}`, and so on. They are read by the same
-loader as any other source, so anything a data folder can express, this can.
+## Where this content comes from, and why that is allowed
+
+Every record in a 5etools data set carries an `srd` flag saying whether it is
+part of the System Reference Document — the subset released under the Open
+Game License. `extract-srd.js` copies **only** flagged records. That flag is
+the licence boundary, and the filter is the whole program: there is no mode in
+which it copies a book.
+
+`srd: true` means the record is included under its own name. `srd: "Some Name"`
+means it is included under a *different* name, because the printed one is
+Product Identity — Bigby's Hand is SRD content, "Bigby" is not. Those records
+are renamed to the string, with the original kept on `__srdFrom` so the class
+spell lists (which key by the printed name) still resolve.
+
+A record keeps its original `source` — `PHB`, `DMG`, `MM` — rather than being
+restamped as `SRD`. Cross-references depend on it: a `classFeature` finds its
+class by `classSource`, a subclass by `classSource` + `subclassSource`, and
+rewriting one side without the other silently empties a character's feature
+list. 5etools keeps the original source beside the flag, and so do we.
+
+Only the 2014 SRD (the `srd` flag) is taken. 5etools also carries `srd52` for
+the 2024 SRD; mixing the two would produce a half-2014, half-2024 compendium
+with two of several hundred things.
+
+## What is here
+
+Roughly 1,800 records: base and magic items, races and subraces, spells with
+their class lists, the twelve classes with one archetype each, the monster and
+NPC bestiary, conditions, languages, senses, skills, deities and feats.
 
 ## How it behaves at runtime
 
 It is a **floor, never a ceiling**. `fivetools.loadAll()` layers it in last,
-with de-duplication on:
+after the user's own source, with de-duplication on:
 
-- A record the user's own data already provided **wins**; the SRD copy is
-  skipped. Loading a data set that already contains the SRD does not give you
-  two Fireballs.
-- Identity is `kind + name + source`, so the 2014 and 2024 Fighter stay two
-  different classes — only a genuine duplicate is dropped.
+- A record the user's data already provides **wins**; the SRD copy is skipped.
+  Loading a set that already contains the SRD does not give you two Fireballs.
+- The layer de-duplicates by `kind + name`, not by source, precisely so a PHB
+  Fireball suppresses the SRD one instead of sitting beside it.
 - An empty or missing folder is the normal case and costs one failed fetch.
+
+## Licence
+
+This is Open Game Content under the Open Game License v1.0a. `OGL.txt` is the
+licence and must travel with the data — the build copies it. Do not remove it.

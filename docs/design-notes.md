@@ -457,15 +457,67 @@ automatically failed.
 
 ## The bundled SRD, and not loading it twice
 
-The apps read a data set the user supplies, and until now that meant a fresh
-install did nothing at all until someone pointed it at a folder. The free rules
-are the one set that may be shared, so they ship in `srd/` beside the app - the
-second deliberate exception to *never bundle game content*, and a narrower one
-than `homebrew/`.
+The apps read a data set the user supplies, which meant a fresh install did
+nothing at all until someone pointed it at a folder. The free rules are the one
+set that may be shared, so they ship in `srd/` beside the app - the second
+deliberate exception to *never bundle game content*, and a narrower one than
+`homebrew/`.
 
-It is a **floor, never a ceiling**. `loadAll()` layers it in last, after the
-user's own source and their homebrew, with de-duplication on. Someone whose data
-set already has a Fireball keeps theirs; someone whose does not gets the SRD's.
+### Filtering, not parsing
+
+The first attempt read the SRD *document* - a markdown-to-JSON conversion of the
+published text - and parsed the numbers back out of prose like
+`**Armor Class** 12 (natural armor)`. It worked, and it was the wrong tool.
+
+5etools already ships this material in exactly the shape every app here reads,
+and every record carries an `srd` flag saying whether it belongs to the freely
+licensed subset. So `tools/extract-srd.js` **filters** a 5etools data folder
+rather than parsing a document:
+
+```
+node tools/extract-srd.js "<path to a 5etools data folder>"
+```
+
+That difference matters three times over:
+
+- **Nothing is re-derived**, so no number can be mis-read. A parser that gets
+  one monster's hit dice wrong is worse than no monster at all, and there are
+  several hundred of them.
+- **The tags are already there.** `tags.mechanics()` reads `{@atk}`, `{@hit}`
+  and `{@damage}` out of an action's raw text; the printed SRD sentence carries
+  the same numbers but none of the tags, so a parsed monster could not attack
+  without a whole rewriting pass. Extracted ones simply work.
+- **The structured fields survive** - `casterProgression`, `classTableGroups`,
+  `optionalfeatureProgression`, `startingProficiencies`. A parser cannot invent
+  those from prose, and they are precisely what the builder computes from.
+
+Around 1,800 records: items, races, spells with their class lists, twelve
+classes with an archetype each, the bestiary, conditions, languages and the
+rest.
+
+### The flag is the licence boundary
+
+Only records flagged `srd` are copied, and that filter is the whole program -
+there is no mode in which it copies a book. `srd: true` means included under
+its own name; `srd: "Some Name"` means included under a *different* one,
+because the printed name is Product Identity. Bigby's Hand is Open Game
+Content; "Bigby" is not. Those records are renamed to the string, with the
+original kept on `__srdFrom`.
+
+That rename has a sting in it. `data/spells/sources.json`, which is where
+modern 5etools keeps class spell lists, keys by the name **as printed** - so
+looking a renamed spell up under its new name finds nothing, and seventeen
+spells silently lost their class lists before this was noticed. They are looked
+up under `__srdFrom`.
+
+Sources are left alone: a record keeps `source: "PHB"` rather than being
+restamped `SRD`. Cross-references depend on it - a `classFeature` finds its
+class by `classSource` - and rewriting one side of that without the other
+empties a character's feature list without saying so.
+
+Only the 2014 SRD is taken. 5etools also carries `srd52` for the 2024 one, and
+mixing them would give a half-and-half compendium with two of several hundred
+things.
 
 ### Two identity keys, for two different questions
 
@@ -483,21 +535,35 @@ thing. There are two answers and both are needed:
 
 5etools stores a race's default subrace with **no name at all**, so those are
 keyed by the race they belong to. Keyed by name they would all collide with each
-other and only the first race would keep its ability bonuses - which is the same
-trap `baseSubrace` exists to work around.
+other and only the first race would keep its ability bonuses - the same trap
+`baseSubrace` exists to work around.
 
 The primary load does **not** de-duplicate. It starts from an empty compendium
 and should faithfully contain whatever the source contains; suppressing records
 there would be second-guessing the user's own data.
 
-### Shipping content into it
+### The supplement that arrived twice
+
+Hunting the duplication turned up a real one that had nothing to do with the
+SRD. `mergeHomebrew()` concatenated three origins - what ships beside the app,
+what sits in the connected data folder, and what was imported by hand - and a
+converted supplement is commonly in two of them at once. Dark Sun was being
+merged twice: two Longswords, two of every subclass, two of every background,
+each pair identical and indistinguishable.
+
+It merges by identity now, first origin winning. That one change halved the
+supplement's record count, from 620 to 304.
+
+### Shipping it
 
 `srd/index.json` maps a record kind to its files, and the build copies exactly
 what is listed, failing loudly if a listed file is missing - the same check
 `homebrew/` gets, for the same reason: a symbiote fetching a file that is not
-there fails silently at the table, and the build is the last place to catch it.
+there fails silently at the table.
 
-The folder ships **empty** from a source checkout. See `srd/README.md`.
+The build also refuses to ship the data without `srd/OGL.txt` beside it. The
+licence is not decoration; shipping the content without it is the one way to
+turn a correctly licensed bundle into an incorrectly licensed one.
 
 ---
 

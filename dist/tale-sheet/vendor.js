@@ -3325,11 +3325,31 @@
     mergeHomebrew();
   }
 
+  /* The three places homebrew can come from, merged into one list.
+
+     De-duplicated, because the same supplement genuinely arrives twice: a
+     converted book ships beside the symbiote AND is often sitting in the data
+     folder the user connected, which is two copies of every record it holds.
+     Before this, Dark Sun gave every one of its items, races and subclasses
+     twice over - two Longswords, two of each subclass - and the second was
+     indistinguishable from the first.
+
+     Order is the precedence: bundled first, then the data folder, then what was
+     imported by hand, and the first to claim an identity keeps it. */
   function mergeHomebrew() {
-    var out = {};
+    var out = {}, seen = {};
     [hbBundled, hbFolder, hbStored].forEach(function (src) {
       Object.keys(src || {}).forEach(function (kind) {
-        out[kind] = (out[kind] || []).concat(src[kind] || []);
+        out[kind] = out[kind] || [];
+        (src[kind] || []).forEach(function (r) {
+          var id = identityOf(kind, r);
+          /* a record with no name cannot be told apart, so keep it */
+          if (id) {
+            if (seen[id]) return;
+            seen[id] = 1;
+          }
+          out[kind].push(r);
+        });
       });
     });
     ft.homebrew = out;
