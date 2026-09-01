@@ -16250,19 +16250,19 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
     ]);
     core.appendChild(labelled('Base AC', numInput(a.ac, 1, 40, function (v) { a.ac = v; save(); })));
     core.appendChild(labelled('AC bonus', numInput(a.acBonus || 0, -10, 20, function (v) {
-      a.acBonus = v; save(); render();
-    })));
+      a.acBonus = v; save();
+    }, null, render)));
     core.appendChild(el('div', { class: 'muted' }, [
       'Effective AC ' + VT.actor.effectiveAC(a) +
       (VT.actor.acSources(a).length ? ' (' + VT.actor.acSources(a).join(', ') + ')' : '') +
       '. Conditions such as Hasted add their own bonus automatically.'
     ]));
     core.appendChild(labelled('Current HP', numInput(a.hp, 0, 999, function (v) {
-      a.hp = Math.max(0, Math.min(v, a.hpMax)); save(); render();
-    })));
+      a.hp = Math.max(0, Math.min(v, a.hpMax)); save();
+    }, null, render)));
     core.appendChild(labelled('Max HP', numInput(a.hpMax, 1, 999, function (v) {
       a.hpMax = v; a.hp = Math.min(a.hp, v); save();
-    })));
+    }, null, render)));
     core.appendChild(labelled('Temp HP', numInput(a.tempHp || 0, 0, 999, function (v) {
       a.tempHp = Math.max(0, v); save();
     })));
@@ -16812,7 +16812,7 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
      while typing fights the typist: entering "15" into a field capped at 20
      would be rewritten to "1" the moment the 1 landed. Mid-typing states like
      "" and "-" are reported as 0 and left alone on screen. */
-  function numInput(v, min, max, cb, step) {
+  function numInput(v, min, max, cb, step, commit) {
     var input = el('input', {
       type: 'text', inputmode: 'numeric', class: 'num',
       value: v == null ? '' : String(v)
@@ -16830,6 +16830,19 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
       if (max != null) n = Math.min(max, n);
       input.value = String(n);
       cb(n);
+      /* Anything that has to redraw the panel waits until here.
+
+         A field whose handler called render() rebuilt the whole view on every
+         keystroke, and the rebuilt input took its value from state - so typing
+         "123" went "1", "12", then "3", because the third keystroke landed in
+         a field that had just been replaced. Worse, the rebuild sometimes took
+         the focus with it and the next character went to the page body and was
+         lost outright. That is the "typing is inconsistent" bug, and it was in
+         four fields on the Edit tab.
+
+         Redrawing when the field is done being typed into gives the derived
+         numbers their update and costs nothing. */
+      if (commit) commit();
     });
     return input;
   }
@@ -16881,8 +16894,8 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
       { value: 'action', label: 'Action' }, { value: 'bonus', label: 'Bonus' }, { value: 'reaction', label: 'Reaction' }
     ], act.cost || 'action', function (v) { act.cost = v; save(); })));
     body.appendChild(labelled('Uses', numInput(act.uses ? act.uses.max : 0, 0, 20, function (v) {
-      act.uses = v > 0 ? { max: v, per: 'rest' } : null; save(); render();
-    })));
+      act.uses = v > 0 ? { max: v, per: 'rest' } : null; save();
+    }, null, render)));
 
     wrap.appendChild(head);
     wrap.appendChild(body);
