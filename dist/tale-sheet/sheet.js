@@ -518,30 +518,19 @@
     ]);
     try { head.insertBefore(VT.actor.portrait(a, 40, 50), head.firstChild); } catch (e) {}
     who.appendChild(head);
-    var acWhy = VT.actor.acSources(a);
     who.appendChild(el('div', { class: 'bigstats' }, [
       stat('AC', VT.actor.effectiveAC(a)), stat('HP', a.hp + '/' + a.hpMax),
       stat('SPD', VT.actor.speedOf(a)), stat('PROF', sign(prof))
     ]));
 
-    if (acWhy.length) {
-      who.appendChild(el('div', { class: 'muted', style: { textAlign: 'center' } }, ['AC ' + acWhy.join(', ')]));
-    }
+    /* The arithmetic behind AC and HP used to be printed under the big stats.
+       It was written for building a character - "your AC seems low" is easier
+       to answer when the sum is on screen - but the sheet is read at the table
+       far more often than a character is built, and three lines of derivation
+       above the hit-point bar is three lines of noise every time.
 
-    /* Where the numbers came from. A character built with ability points left
-       unspent looks exactly like a correct one, only worse, so the arithmetic
-       is worth showing rather than making someone reverse it by hand. */
-    if (a.acWhy || a.hpWhy) {
-      who.appendChild(el('div', { class: 'muted', style: { textAlign: 'center', fontSize: '10px' } }, [
-        [a.acWhy ? 'AC = ' + a.acWhy : null,
-         a.hpWhy ? 'HP = ' + a.hpWhy : null].filter(Boolean).join('   \u00b7   ')
-      ]));
-    }
-    if (a.acWhyAlt) {
-      who.appendChild(el('div', { class: 'muted', style: { textAlign: 'center', fontSize: '10px' } }, [
-        a.acWhyAlt
-      ]));
-    }
+       The numbers are still derived and still explained: `acWhy` is kept on the
+       actor and shown by the Forge's roster, where building actually happens. */
 
     /* hp */
     var frac = U.clamp(a.hp / Math.max(1, a.hpMax), 0, 1);
@@ -717,6 +706,17 @@
     /* What your gear lets you do. Kept in its own group because it comes and
        goes with what is worn and attuned, and because the charges belong to
        the item rather than to you. */
+    /* Attacks that exist because something is equipped, rather than because it
+       was chosen at character creation. Shown with the item actions, since both
+       come and go with what is worn. */
+    var fromGear = a.gearActions || [];
+    if (fromGear.length) {
+      acts.appendChild(el('div', { class: 'spell-head' }, [
+        el('span', { class: 'lbl' }, ['What you are holding'])
+      ]));
+      fromGear.forEach(function (act) { acts.appendChild(actionRow(a, act)); });
+    }
+
     var fromItems = a.itemActions || [];
     if (fromItems.length) {
       acts.appendChild(el('div', { class: 'spell-head' }, [
@@ -1834,10 +1834,6 @@
 
     var card = el('div', { class: 'card' }, [el('h3', {}, ['Proficiencies'])]);
 
-    if (a.armorUnskilled) {
-      card.appendChild(el('div', { class: 'warn' }, [a.armorUnskilled.note]));
-    }
-
     function row(label, chips, note) {
       if (!chips.length) return;
       var box = el('div', { class: 'row' }, [el('label', {}, [label])]);
@@ -1906,10 +1902,13 @@
     var card = el('div', { class: 'card' }, [
       el('h3', {}, ['Equipment — ' + inv.length])
     ]);
-    if (a.armorUnskilled) {
-      card.appendChild(el('div', { class: 'warn' }, [a.armorUnskilled.note]));
-    }
+    /* No banner here about what unfamiliar armour costs. The row for the piece
+       already says "beyond your training", the Stealth row says where its
+       disadvantage comes from, and every affected roll carries the reason in
+       its tooltip - a paragraph repeating all of that above the pack was one
+       more thing to read past every time the tab was opened.
 
+       The rule is still enforced; it is just no longer announced. */
     wearable.forEach(function (e) {
       var g = e.gear;
       var fxText = e.fx ? VT.itemfx.describe(e.fx) : '';
@@ -2883,16 +2882,37 @@
     view.appendChild(coinCard);
 
     /* --- abilities --- */
+    /* A hand-edited score is written into the BUILD as well as onto the actor.
+
+       Without that it lived only on the derived character, and the next
+       level-up recomputed scores from the build and quietly put it back -
+       a correction made once would silently undo itself weeks later. Moving
+       the raw score by the same amount means the edit is part of how this
+       character is built, and survives every re-derive.
+
+       `baseAbilities` moves too, because the gear pass recomputes from it and
+       would otherwise drag the score back on the next equip. */
+    function nudgeAbility(k, delta) {
+      var next = U.clamp((a.abilities[k] || 10) + delta, 1, 30);
+      if (next === a.abilities[k]) return;
+      a.abilities[k] = next;
+      if (a.baseAbilities && a.baseAbilities[k] != null) a.baseAbilities[k] += delta;
+      if (a.build) {
+        a.build.base = a.build.base || {};
+        a.build.base[k] = (a.build.base[k] == null ? 10 : a.build.base[k]) + delta;
+      }
+      save(); render();
+    }
     var ab = el('div', { class: 'card' }, [el('h3', {}, ['Ability scores'])]);
     SRD.ABILITIES.forEach(function (k) {
       ab.appendChild(el('div', { class: 'rollrow' }, [
         el('span', { class: 'lbl' }, [SRD.ABILITY_NAME[k]]),
         el('button', { class: 'btn sm', onClick: function () {
-          a.abilities[k] = Math.max(1, a.abilities[k] - 1); save(); render();
+          nudgeAbility(k, -1);
         } }, ['−']),
         el('span', { class: 'score' }, [String(a.abilities[k])]),
         el('button', { class: 'btn sm', onClick: function () {
-          a.abilities[k] = Math.min(30, a.abilities[k] + 1); save(); render();
+          nudgeAbility(k, 1);
         } }, ['+']),
         el('span', { class: 'mod' }, [sign(VT.actor.abilityMod(a, k))])
       ]));

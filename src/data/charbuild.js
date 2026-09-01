@@ -679,7 +679,13 @@
     next.conditions = (actor.conditions || []).slice();
     next.used = U.clone(actor.used || {});
     next.coins = U.clone(actor.coins || VT.coin.emptyPurse());
-    next.inventory = U.clone(actor.inventory || []);
+    /* NOT next.inventory. The old inventory was already handed to derive() on
+       r.choices.inventory above, and derive returns it with anything the build
+       adds - a weapon picked in "Add from your data", the armour of a class
+       that starts in it. Copying the old list back over that threw the new
+       item away every time: the weapon's attack appeared in Actions, because
+       that is built from c.weapons directly, while the weapon itself never
+       reached the pack. */
     next.spriteId = actor.spriteId || null;
     next.acBonus = actor.acBonus || 0;
     next.deathSaves = U.clone(actor.deathSaves || { s: 0, f: 0 });

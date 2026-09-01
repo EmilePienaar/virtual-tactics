@@ -68,6 +68,23 @@
          are trained with what you are holding. Entries saved before this
          existed have no category and are left unjudged rather than guessed at. */
       if (item.weaponCategory) g.category = String(item.weaponCategory);
+      /* And what it takes to swing it. A weapon in the pack used to be a name
+         with a slot: you could wear it and nothing else happened, because
+         attacks were built once at derive time from the build's weapon list.
+         A blade picked up in play - bought, forged, looted - was therefore
+         equippable and unusable.
+
+         The few fields convert.weapon reads are copied here, so an equipped
+         weapon can be turned into an attack without needing the compendium.
+         That matters for a forged item, which exists in no compendium the
+         player has. */
+      var w = {};
+      ['name', 'type', 'dmg1', 'dmg2', 'dmgType', 'range', 'weaponCategory',
+       'bonusWeapon', 'bonusWeaponAttack', 'bonusWeaponDamage'].forEach(function (k) {
+        if (item[k] != null) w[k] = item[k];
+      });
+      if (item.property) w.property = item.property;
+      if (w.dmg1 || w.type) g.wpn = w;
     }
     return g;
   }
@@ -193,6 +210,41 @@
        so attuning or unattuning one makes its action appear or disappear. */
     if (VT.itemfx && VT.itemfx.allActions) actor.itemActions = VT.itemfx.allActions(actor);
 
+    /* An equipped weapon is something you can attack with.
+
+       Recomputed from scratch each time, like everything else here, so putting
+       a blade down takes its attack away again. Anything already in the built
+       action list is skipped: a weapon chosen during character creation is
+       there already and must not appear twice.
+
+       The battle map does not load convert.js, so this is guarded rather than
+       assumed - there, a token's attacks come from its statblock. */
+    actor.gearActions = [];
+    if (VT.convert && VT.convert.weapon) {
+      var prof = VT.actor ? VT.actor.prof(actor) : 2;
+      var strMod = SRD.mod((actor.abilities && actor.abilities.str) || 10);
+      var dexMod = SRD.mod((actor.abilities && actor.abilities.dex) || 10);
+      var already = {};
+      (actor.actions || []).forEach(function (x) {
+        already[String(x.name || '').toLowerCase()] = 1;
+      });
+      entries(actor).forEach(function (e) {
+        if (!e.equipped || !e.gear || e.gear.slot !== 'weapon' || !e.gear.wpn) return;
+        if (already[String(e.name || '').toLowerCase()]) return;
+        var rec = e.gear.wpn;
+        if (!rec.name) rec = Object.assign({ name: e.name }, rec);
+        var trained = !VT.proficiency ||
+          VT.proficiency.weaponOk(actor, e.name, e.gear.category);
+        var act = VT.convert.weapon(rec, {
+          str: strMod, dex: dexMod, prof: trained ? prof : 0
+        });
+        if (!act) return;
+        act.fromGear = true;
+        actor.gearActions.push(act);
+        already[String(act.name).toLowerCase()] = 1;
+      });
+    }
+
     /* Wearing armour you were never trained in. A flag rather than an edited
        number, because the penalty is disadvantage on three different kinds of
        roll plus a bar on casting, and because this function runs again on
@@ -270,10 +322,26 @@
     var fixed = 0;
     entries(actor).forEach(function (e) {
       if (!e || !e.name) return;
-      if (e.gear || e.desc || e.fx) return;             /* already resolved */
+      /* Two different repairs, and an entry can need either.
+
+         A bare name needs everything. An entry resolved BEFORE weapons carried
+         their attack fields has gear already and needs only those - and the
+         old early return, which skipped anything with gear, meant such a weapon
+         could never become usable no matter how often this ran. */
+      var bare = !e.gear && !e.desc && !e.fx;
+      var needsAttack = !!(e.gear && e.gear.slot === 'weapon' && !e.gear.wpn);
+      if (!bare && !needsAttack) return;
+
       var rec = VT.fivetools.byName('item', e.name, e.source || null) ||
                 VT.fivetools.byName('item', e.name, null);
       if (!rec) return;
+
+      if (needsAttack && !bare) {
+        var fresh = fromItem(rec);
+        if (fresh && fresh.wpn) { e.gear.wpn = fresh.wpn; fixed++; }
+        return;
+      }
+
       var g = fromItem(rec);
       if (g) { e.gear = g; if (e.equipped == null) e.equipped = false; }
       var desc = describeItem(rec);

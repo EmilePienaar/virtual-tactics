@@ -180,9 +180,21 @@ async function main() {
         ? fs.readFileSync(FLAGS['--file'], 'utf8')
         : REST.slice(1).join(' ');
       if (!expr.trim()) die('Nothing to evaluate. Pass an expression or --file <path>.');
-      /* Wrapped so a bare statement block and a bare expression both work. */
-      show(await evaluate(session, '(function(){ return (' + expr + '); })()')
-        .catch(() => evaluate(session, '(function(){ ' + expr + ' })()')));
+      /* Wrapped so a bare statement block and a bare expression both work.
+
+         The fallback only covers a SYNTAX error - "this is statements, not an
+         expression". Anything else has to propagate: falling back on a real
+         error runs the code a second time in a form with no return value, so a
+         genuine failure came back as a cheerful `undefined` and the actual
+         message was lost. */
+      let out;
+      try {
+        out = await evaluate(session, '(function(){ return (' + expr + '); })()');
+      } catch (e) {
+        if (!/SyntaxError|Unexpected|Illegal return/i.test(String(e.message))) throw e;
+        out = await evaluate(session, '(function(){ ' + expr + ' })()');
+      }
+      show(out);
       return;
     }
 
