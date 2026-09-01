@@ -455,6 +455,63 @@ automatically failed.
 
 ---
 
+## Testing a symbiote without clicking through the game
+
+TaleSpire renders symbiotes in Vuplex 3D WebView, which is Chromium, and it
+starts with remote debugging switched on. Its own log says so:
+
+```
+[3D WebView] Enabling remote debugging for Windows on port 8080.
+```
+
+That is an ordinary Chrome DevTools Protocol endpoint, which means the symbiote
+running inside the game can be inspected and driven from outside it.
+`tools/ts-drive.js` does that with no dependencies — Node 22 has `fetch` and
+`WebSocket` built in.
+
+```
+node tools/ts-drive.js targets
+node tools/ts-drive.js eval "VT.fivetools.get('item').length"
+node tools/ts-drive.js eval --file check.js
+node tools/ts-drive.js errors
+```
+
+It picks our symbiote out of the target list by URL, because the game may have
+other web content open at once; `--target` overrides that and `--port` covers a
+TaleSpire that chose a different one.
+
+This matters because the dev shim is not the real thing. The typing bug that
+lost focus after every character **did not reproduce under the shim at all** —
+the shim never fires the creature and client events that were causing it. The
+only way to tell whether a symbiote fix works is to run it where the real `TS`
+object lives, and before this the loop was "describe the change, ask someone to
+click through the game, wait".
+
+It reaches the web content only. There is no moving a mini, opening a board or
+clicking TaleSpire's own interface from here — get the symbiote panel open on
+screen first, then this can drive what is inside it.
+
+---
+
+## Handing an item over without a sale
+
+A purchase already produces a loot code: the player buys, the shop replies with
+a receipt carrying a code, and they paste it into Tale Sheet. That is the path
+players use and it works — but exercising it needs two clients, a board, and a
+player willing to spend the money, which makes it a poor way to check that
+anything about items still works.
+
+So the DM's stock list hands out the same code directly: a `code` button on
+every row, and one for the whole shelf at once.
+
+**Deliberately the same code.** Name, source, quantity and note — exactly what
+`handlePurchase` sends. A richer code carrying the whole item record would have
+been easier to build and would have tested a different path from the one players
+actually take, which is the opposite of useful. What you check with a copied
+code is what a player gets when they buy.
+
+---
+
 ## The bundled SRD, and not loading it twice
 
 The apps read a data set the user supplies, which meant a fresh install did
@@ -1733,6 +1790,8 @@ shopsmith/   index.html  shopsmith.css       webapp: build shops at a desk
              shopsmith.js
 test/      fixture-data/                      synthetic 5etools-shaped data (invented content)
 tools/     serve.js  build-single.js  build-symbiote.js
+           extract-srd.js                    the SRD subset out of a 5etools folder
+           ts-drive.js                       drive a symbiote inside TaleSpire over CDP
 ```
 
 `test/fixture-data/` is a small hand-written data set in the 5etools schema,

@@ -22,6 +22,7 @@
     liveShop: null,          // players: the shop currently open to them
     receipts: [],
     currency: null,          // custom coin system, or null for D&D standard
+    codeFor: null,           // stock row whose loot code is open, by good id
     live: false
   };
 
@@ -721,6 +722,40 @@
 
   /* The list of things on offer, and the search for adding more. A hoard and a
      shop stock themselves the same way; only the price column differs. */
+  /* ==== handing an item over without a sale ==============================
+     The DM's copy of a loot code.
+
+     A purchase already produces one: the player buys, the shop replies with a
+     receipt carrying a code, and they paste it into Tale Sheet. That is the
+     path players use and it works - but it needs two clients, a board, and a
+     player willing to spend the money, which makes it a poor way to check that
+     anything about items still works.
+
+     So the stock list can hand out the same code directly. Deliberately the
+     SAME code: name, source, quantity and note, exactly what handlePurchase
+     sends. A richer one carrying the whole item record would be easier to make
+     and would test a different path from the one players take, which is the
+     opposite of useful. */
+  function goodCode(shop, good, qty) {
+    return SHOPS.lootCode({
+      from: shop.name,
+      items: [{ name: good.name, source: good.source || null,
+                qty: Math.max(1, qty || 1), note: good.note || '' }]
+    });
+  }
+
+  /* Everything on the shelves in one code, for setting a character up in a
+     single paste. Unlimited stock (-1) counts as one. */
+  function stockCode(shop) {
+    return SHOPS.lootCode({
+      from: shop.name,
+      items: shop.items.map(function (g) {
+        return { name: g.name, source: g.source || null,
+                 qty: g.qty > 0 ? g.qty : 1, note: g.note || '' };
+      })
+    });
+  }
+
   function renderStock(shop) {
     var stock = el('div', { class: 'card' }, [
       el('h3', {}, [(shop.free ? 'Contents — ' : 'Stock — ') + shop.items.length])
@@ -740,10 +775,22 @@
                       var n = COIN.parse(v, sys());
                       if (n) { g.price = n; save(); }
                     }),
+        el('button', {
+          class: 'btn sm' + (S.codeFor === g.id ? ' on' : ''),
+          title: 'Copy a loot code for this item - the same code buying it would send',
+          onClick: function () {
+            S.codeFor = S.codeFor === g.id ? null : g.id;
+            render();
+          }
+        }, ['code']),
         el('button', { class: 'btn sm danger', onClick: function () {
           shop.items.splice(i, 1); save(); render();
         } }, ['×'])
       ]));
+      if (S.codeFor === g.id) {
+        stock.appendChild(copyBox(goodCode(shop, g, 1),
+          'One ' + g.name + ' - paste into Tale Sheet, under Collect'));
+      }
     });
     stock.appendChild(el('p', { class: 'muted' }, [
       shop.free
@@ -752,6 +799,30 @@
           (unpriced ? '  ' + unpriced + (unpriced === 1 ? ' item has' : ' items have') +
             ' no price — the books do not list one for them.' : '')
     ]));
+
+    /* The whole shelf in one code. Mostly for setting a character up quickly,
+       or for checking that a change to items still works without staging a
+       two-client purchase. */
+    if (shop.items.length) {
+      stock.appendChild(el('div', { class: 'btnrow' }, [
+        el('button', {
+          class: 'btn sm' + (S.codeFor === '__all' ? ' on' : ''),
+          title: 'One code containing everything on the shelves',
+          onClick: function () {
+            S.codeFor = S.codeFor === '__all' ? null : '__all';
+            render();
+          }
+        }, [S.codeFor === '__all' ? 'Hide the code' : 'Code for everything here'])
+      ]));
+      if (S.codeFor === '__all') {
+        stock.appendChild(copyBox(stockCode(shop),
+          'All ' + shop.items.length + ' - paste into Tale Sheet, under Collect'));
+      }
+      stock.appendChild(el('p', { class: 'muted' }, [
+        'A code hands the item over with no money changing hands. It is the same ' +
+        'code a purchase sends, so what a player collects is what you tested.'
+      ]));
+    }
     view.appendChild(stock);
 
     /* add goods */

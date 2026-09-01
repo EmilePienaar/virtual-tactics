@@ -59,6 +59,9 @@ Things that work and have been checked against real data.
 - **Sync between symbiotes** — framed to fit TaleSpire's 500-character limit.
 - **Treasure** — hoards rolled off the books' tables, coin splitting, loot codes
   that carry full item records.
+- **The DM can hand out item codes** — a `code` button on every row of a shop's
+  stock, and one for the whole shelf, producing exactly the code a purchase
+  sends. Mostly for testing item changes without staging a two-client sale.
 - **Items bought in a shop arrive as items** — wearable, attunable, and folding
   open to their own description. A shop sends a name and a printing; the sheet
   resolves it back into the record.
@@ -182,6 +185,11 @@ remove spells from a list.
 
 ## Working practice
 
+- **A symbiote can be driven from outside TaleSpire.** The game enables Chromium
+  remote debugging on port 8080, so `node tools/ts-drive.js eval "..."` runs
+  against the symbiote while the game is open — with the real `TS` object, which
+  the dev shim is not. Use it for anything the shim cannot reproduce; the typing
+  bug was invisible under the shim and only existed in the game.
 - **Verify against the real data**, not fixtures. Run `node tools/serve.js` and
   drive the app in a browser. `test/fixture-data/` exists to tell "the tool is
   broken" from "the data is odd", not as a substitute.
