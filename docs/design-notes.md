@@ -1100,6 +1100,71 @@ would be wrong, so they are deliberately left out rather than forgotten.
 
 ---
 
+## The sheet is read far more often than it is built
+
+The Sheet tab had grown in the order things were written rather than the order
+they are used, so a player reaching for their attunement slots scrolled past the
+choice tree and an unspent-improvement warning to get there.
+
+It is ordered by how often a hand reaches for it now: identity, abilities and
+skills, then **actions, spells, the slots and resources that pay for them**, the
+things that come and go in a fight, then coin, then equipment, proficiencies and
+tools, and finally features, feats and attunement — the things you set once.
+
+Two cards left entirely. The **Choices** list and the **unspent improvement**
+warning are both things you act on while building, and both already exist on the
+Edit tab where the acting happens. Repeating them on the play sheet put two
+boxes between a player and their gear every session.
+
+### One Read button everywhere
+
+An item's text, a spell's text and a feature's text were three different
+controls: a gold button for one, a 16px folded triangle for the other two. The
+triangle works in a spell list — every row has one and you are scanning forty —
+but nowhere else, and it left the sheet looking like two designs.
+
+They are all `readButton()` now, opening the same pop-out. That matters most
+when preparing spells, which is exactly when a player needs to read rather than
+roll, and it removed `spellText` and the folded markup with it.
+
+Feature text is resolved when the button is pressed, not when the list is drawn.
+A character has twenty features and reading all of their prose to render a list
+nobody has asked to read is work for nothing.
+
+---
+
+## Feats
+
+An ability score improvement can be spent on a feat instead — the trade the
+books offer at 4th level and every one after. The old advice was to "record it
+as a custom feature", which meant the feat did nothing: no ability bonus, no
+text, and the improvement still showing as unspent.
+
+An entry in `build.asi` is now either `{picks: {str: 1, dex: 1}}` or
+`{feat: {name, source}}`. Both spend the slot, which is what `asiStatus` counts.
+The Edit tab offers the three choices as one control — two points, one point
+twice, or a feat — and the feat list comes from whatever data is connected.
+
+**A granted feat is a different thing** and is kept apart on `build.feats`: a
+variant human's free one, a DM's reward, a supplement's rule. Counting those
+against the improvement budget would be wrong, so `featRefs()` returns both and
+only the ASI half is counted. "Add from your data" grants that kind.
+
+Feats travel through a re-derive like the rest of the build, and their **fixed
+ability bonuses are applied** — a feat that grants +1 Constitution raises the
+score, and the hit points follow when that crosses a modifier boundary.
+
+### What a feat still does not do
+
+Only the structured `ability` field is applied. A feat whose benefit is prose —
+Tough's "your hit point maximum increases by twice your level" — is recorded,
+listed and readable, and does nothing mechanical on its own. That is the same
+line the feature engine draws everywhere else: read what the data states, show
+the words for the rest, and never guess. Set it by hand in Core numbers if you
+want the number to move.
+
+---
+
 ## A render must not eat what you are typing
 
 `render()` throws the whole view away and builds it again. That is fine for a

@@ -212,10 +212,44 @@
 
   function isASI(f) { return /^ability score improvement/i.test(f.name || ''); }
 
+  /* Every feat this character holds, as {name, source} references.
+
+     Two ways in, and they are genuinely different things. An ASI slot spent on
+     a feat is the trade the books offer at 4th, 8th and so on - it costs the
+     improvement. A feat on `c.feats` was granted some other way: a variant
+     human's free one, a DM's reward, a supplement's rule. Counting the second
+     against the ASI budget would be wrong, so they are kept apart and only the
+     first is counted by asiStatus. */
+  function featRefs(c) {
+    var out = [];
+    function add(r) {
+      if (!r || !r.name) return;
+      var key = String(r.name).toLowerCase();
+      if (out.some(function (x) { return String(x.name).toLowerCase() === key; })) return;
+      out.push({ name: r.name, source: r.source || null });
+    }
+    (c.asi || []).forEach(function (entry) { if (entry && entry.feat) add(entry.feat); });
+    (c.feats || []).forEach(add);
+    return out;
+  }
+
+  /* The records behind those references, for the ability bonuses they grant
+     and the text the sheet shows. A feat the compendium cannot resolve is kept
+     as a reference with no record rather than dropped - the character still
+     has it, we just cannot say what it does. */
+  function featRecords(c) {
+    var FT = VT.fivetools;
+    return featRefs(c).map(function (r) {
+      var rec = (FT && FT.loaded && FT.byName) ? FT.byName('feat', r.name, r.source) : null;
+      return { name: r.name, source: r.source || (rec && rec.source) || null, rec: rec || null };
+    });
+  }
+
   /* How many ability score improvements this build has earned, and how many the
      player has actually assigned. */
   function asiStatus(c) {
     var earned = featuresFor(c).filter(isASI).length;
+    /* Both kinds of entry spend the slot: two ability points, or a feat. */
     var spent = (c.asi || []).length;
     return { earned: earned, spent: spent, left: Math.max(0, earned - spent) };
   }
@@ -266,6 +300,23 @@
       Object.keys(fb.bonus).forEach(function (k) { bonuses[k] = (bonuses[k] || 0) + fb.bonus[k]; });
       caps = fb.cap;
     }
+    /* Feats taken in place of an improvement, or granted outright. The choice
+       tree handles the ones a class offers; these are the ones it does not see,
+       so their fixed ability bonuses are added here by the same rule. */
+    a.feats = featRecords(c).map(function (f) {
+      if (f.rec && VT.choiceFx && VT.choiceFx.fixedAbility) {
+        var fixed = VT.choiceFx.fixedAbility(f.rec);
+        Object.keys(fixed).forEach(function (k) {
+          bonuses[k] = (bonuses[k] || 0) + fixed[k];
+        });
+      }
+      return {
+        name: f.name, source: f.source,
+        /* the text is resolved now rather than stored: a feat's entry is long,
+           and every save would carry it otherwise */
+        known: !!f.rec
+      };
+    });
     var base = c.base || {};
     SRD.ABILITIES.forEach(function (k) {
       a.abilities[k] = U.clamp((base[k] == null ? 10 : base[k]) + (bonuses[k] || 0), 1, caps[k] || 20);
@@ -519,6 +570,9 @@
       weaponProf: (c.weaponProf || []).slice(),
       langProf: (c.langProf || []).slice(),
       asi: U.clone(c.asi || []),
+      feats: (c.feats || []).map(function (f) {
+        return { name: f.name, source: f.source || null };
+      }),
       expertise: (c.expertise || []).slice()
     };
   }
@@ -558,6 +612,9 @@
       weaponProf: (refs.weaponProf || []).slice(),
       langProf: (refs.langProf || []).slice(),
       asi: U.clone(refs.asi || []),
+      feats: (refs.feats || []).map(function (f) {
+        return { name: f.name, source: f.source || null };
+      }),
       expertise: (refs.expertise || []).slice(),
       race: get('race', refs.race, 'race'),
       subrace: get('subrace', refs.subrace, 'subrace'),
@@ -667,6 +724,7 @@
     r.choices.coins = actor.coins;
     r.choices.inventory = actor.inventory;
     r.choices.expertise = actor.expertise || (refs.expertise || []);
+    r.choices.feats = (refs.feats || []).slice();
 
     var next = derive(r.choices);
     next.id = actor.id;
@@ -733,6 +791,7 @@
     relevelClass: relevelClass, addClassLevel: addClassLevel,
     classesOf: classesOf, totalLevelOf: totalLevelOf,
     subclassFor: subclassFor,
-    featuresFor: featuresFor, featureText: featureText, featureRecord: featureRecord, asiStatus: asiStatus, isASI: isASI
+    featuresFor: featuresFor, featureText: featureText, featureRecord: featureRecord,
+    asiStatus: asiStatus, isASI: isASI, featRefs: featRefs, featRecords: featRecords
   };
 })();

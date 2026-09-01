@@ -652,44 +652,6 @@
       el('summary', {}, ['Skills']), el('div', {}, [skillBox])
     ]));
 
-    /* Damage resistances, from whatever granted them. */
-    var defCard = defencesPanel(a);
-    if (defCard) view.appendChild(defCard);
-
-    /* What you are carrying, and what of it you are wearing. */
-    var gearCard = gearPanel(a);
-    if (gearCard) view.appendChild(gearCard);
-
-    /* Languages, armour and weapons. Tools have their own card below because
-       they are the only one of the four you actually roll. */
-    var profCard = proficiencyCard(a);
-    if (profCard) view.appendChild(profCard);
-
-    /* tool proficiencies - a thieves' tools check is a real thing to roll */
-    if ((a.toolProf || []).length) {
-      var toolCard = el('div', { class: 'card' }, [el('h3', {}, ['Tools'])]);
-      var prof = VT.actor.prof(a);
-      a.toolProf.forEach(function (t) {
-        /* Which ability a tool check uses is the DM's call and changes with the
-           task - picking a lock is Dexterity, spotting a forgery Intelligence -
-           so offer the sensible default and let it be changed. */
-        var abil = TOOL_ABILITY[String(t).toLowerCase()] || 'dex';
-        var mod = VT.actor.abilityMod(a, abil) + prof;
-        var sel = selectOf(SRD.ABILITIES.map(function (k) {
-          return { value: k, label: SRD.ABILITY_NAME[k] };
-        }), abil, function (v) { abil = v; });
-        toolCard.appendChild(el('div', { class: 'rollrow' }, [
-          el('span', { class: 'lbl' }, [U.cap(t), el('span', { class: 'sub' }, ['  proficient'])]),
-          sel,
-          el('button', { class: 'btn sm', onClick: function () {
-            rollD20(U.cap(t) + ' (' + SRD.ABILITY_NAME[abil] + ')',
-                    VT.actor.abilityMod(a, abil) + prof);
-          } }, [sign(mod)])
-        ]));
-      });
-      view.appendChild(toolCard);
-    }
-
     /* Attacks and abilities. Spells used to be mixed in here, which meant a
        caster's attacks were buried under forty spells and the slots that pay
        for them were in a different card again. */
@@ -710,12 +672,9 @@
        was chosen at character creation. Shown with the item actions, since both
        come and go with what is worn. */
     var fromGear = a.gearActions || [];
-    if (fromGear.length) {
-      acts.appendChild(el('div', { class: 'spell-head' }, [
-        el('span', { class: 'lbl' }, ['What you are holding'])
-      ]));
-      fromGear.forEach(function (act) { acts.appendChild(actionRow(a, act)); });
-    }
+    /* No heading over these: an attack from an equipped weapon is an attack,
+       and saying where it came from was a label for its own sake. */
+    fromGear.forEach(function (act) { acts.appendChild(actionRow(a, act)); });
 
     var fromItems = a.itemActions || [];
     if (fromItems.length) {
@@ -734,81 +693,6 @@
 
     var book = spellbookCard(a, spells);
     if (book) view.appendChild(book);
-
-    /* Anything a spell has put on the board goes with the spells, not among
-       the class features - a summon is something you cast, and looking for it
-       anywhere else is looking in the wrong place. */
-    (summonCards(a) || []).forEach(function (cd) { view.appendChild(cd); });
-
-    /* the ranger's animal - one card, whether picking or playing */
-    var compCard = companionCard(a);
-    if (compCard) view.appendChild(compCard);
-
-    /* wild shape: the picker, then the active form's own stat block */
-    var wsCard = wildShapeCard(a);
-    if (wsCard) view.appendChild(wsCard);
-    var wsPanel = wildShapePanel(a);
-    if (wsPanel) view.appendChild(wsPanel);
-
-    /* coin */
-    a.coins = a.coins || VT.coin.emptyPurse();
-    var coinAmt = el('input', { type: 'text', value: S.coinEntry || '10 gp' ,
-      onInput: function (e) { S.coinEntry = e.target.value; } });
-    var purse = el('div', { class: 'card' }, [
-      el('h3', {}, ['Coin']),
-      el('div', { class: 'bigstats', style: { gridTemplateColumns: 'repeat(4,1fr)' } },
-        VT.coin.denoms().filter(function (d) { return d.key !== 'ep' || a.coins.ep; })
-          .map(function (d) { return stat(d.key.toUpperCase(), a.coins[d.key] || 0); })),
-      el('div', { class: 'muted', style: { margin: '6px 0' } }, ['Total ' + VT.coin.format(a.coins)]),
-      el('div', { class: 'hpctl' }, [
-        el('button', { class: 'btn sm danger', onClick: function () {
-          var n = VT.coin.parse(coinAmt.value);
-          if (!n) { toast('Could not read "' + coinAmt.value + '"', 'err'); return; }
-          var next = VT.coin.spend(a.coins, n);
-          if (!next) { toast('Not enough coin — you have ' + VT.coin.format(a.coins), 'err'); return; }
-          a.coins = next;
-          toast('Spent ' + VT.coin.format(n), 'ok');
-          if (S.postToChat) postChat('spends ' + VT.coin.format(n));
-          save(); render();
-        } }, ['− Spend']),
-        coinAmt,
-        el('button', { class: 'btn sm', onClick: function () {
-          var n = VT.coin.parse(coinAmt.value);
-          if (!n) { toast('Could not read "' + coinAmt.value + '"', 'err'); return; }
-          a.coins = VT.coin.add(a.coins, n);
-          toast('Gained ' + VT.coin.format(n), 'ok');
-          save(); render();
-        } }, ['+ Earn'])
-      ]),
-      el('p', { class: 'muted' }, ['Type amounts like "12 gp", "5sp 3cp", or a bare number of copper.'])
-    ]);
-    view.appendChild(purse);
-
-    /* resources — ki, rage, bardic inspiration, superiority dice... */
-    if ((a.resources || []).length) {
-      var resCard = el('div', { class: 'card' }, [el('h3', {}, ['Resources'])]);
-      a.resources.forEach(function (r) {
-        var left = r.max - r.used;
-        resCard.appendChild(el('div', { class: 'rollrow' }, [
-          el('span', { class: 'lbl' }, [r.name,
-            el('span', { class: 'sub' }, ['  per ' + r.per + ' rest'])]),
-          el('button', { class: 'btn sm', disabled: r.used <= 0 ? true : null,
-            title: 'Give one back', onClick: function () {
-              VT.features.restore(a, r.key); save(); render();
-            } }, ['+']),
-          el('span', { class: 'mod', style: { color: left ? 'var(--green)' : 'var(--red)' } },
-            [left + '/' + r.max]),
-          el('button', { class: 'btn sm', disabled: left <= 0 ? true : null,
-            title: 'Spend one', onClick: function () {
-              if (VT.features.spend(a, r.key)) {
-                toast(r.name + ' spent — ' + (r.max - r.used) + ' left');
-                save(); render();
-              }
-            } }, ['−'])
-        ]));
-      });
-      view.appendChild(resCard);
-    }
 
     /* Spell slots live with the spells they pay for (see spellbookCard). This
        card is only for a character who has slots and no spells on the sheet -
@@ -876,6 +760,47 @@
       }
       view.appendChild(slotCard);
     }
+
+    /* resources — ki, rage, bardic inspiration, superiority dice... */
+    if ((a.resources || []).length) {
+      var resCard = el('div', { class: 'card' }, [el('h3', {}, ['Resources'])]);
+      a.resources.forEach(function (r) {
+        var left = r.max - r.used;
+        resCard.appendChild(el('div', { class: 'rollrow' }, [
+          el('span', { class: 'lbl' }, [r.name,
+            el('span', { class: 'sub' }, ['  per ' + r.per + ' rest'])]),
+          el('button', { class: 'btn sm', disabled: r.used <= 0 ? true : null,
+            title: 'Give one back', onClick: function () {
+              VT.features.restore(a, r.key); save(); render();
+            } }, ['+']),
+          el('span', { class: 'mod', style: { color: left ? 'var(--green)' : 'var(--red)' } },
+            [left + '/' + r.max]),
+          el('button', { class: 'btn sm', disabled: left <= 0 ? true : null,
+            title: 'Spend one', onClick: function () {
+              if (VT.features.spend(a, r.key)) {
+                toast(r.name + ' spent — ' + (r.max - r.used) + ' left');
+                save(); render();
+              }
+            } }, ['−'])
+        ]));
+      });
+      view.appendChild(resCard);
+    }
+
+    /* Anything a spell has put on the board goes with the spells, not among
+       the class features - a summon is something you cast, and looking for it
+       anywhere else is looking in the wrong place. */
+    (summonCards(a) || []).forEach(function (cd) { view.appendChild(cd); });
+
+    /* the ranger's animal - one card, whether picking or playing */
+    var compCard = companionCard(a);
+    if (compCard) view.appendChild(compCard);
+
+    /* wild shape: the picker, then the active form's own stat block */
+    var wsCard = wildShapeCard(a);
+    if (wsCard) view.appendChild(wsCard);
+    var wsPanel = wildShapePanel(a);
+    if (wsPanel) view.appendChild(wsPanel);
 
     /* death saves - only once they matter */
     if (a.hp <= 0 || (a.deathSaves && (a.deathSaves.s || a.deathSaves.f))) {
@@ -966,7 +891,79 @@
     ]);
     view.appendChild(rest);
 
-    /* features */
+    /* coin */
+    a.coins = a.coins || VT.coin.emptyPurse();
+    var coinAmt = el('input', { type: 'text', value: S.coinEntry || '10 gp' ,
+      onInput: function (e) { S.coinEntry = e.target.value; } });
+    var purse = el('div', { class: 'card' }, [
+      el('h3', {}, ['Coin']),
+      el('div', { class: 'bigstats', style: { gridTemplateColumns: 'repeat(4,1fr)' } },
+        VT.coin.denoms().filter(function (d) { return d.key !== 'ep' || a.coins.ep; })
+          .map(function (d) { return stat(d.key.toUpperCase(), a.coins[d.key] || 0); })),
+      el('div', { class: 'muted', style: { margin: '6px 0' } }, ['Total ' + VT.coin.format(a.coins)]),
+      el('div', { class: 'hpctl' }, [
+        el('button', { class: 'btn sm danger', onClick: function () {
+          var n = VT.coin.parse(coinAmt.value);
+          if (!n) { toast('Could not read "' + coinAmt.value + '"', 'err'); return; }
+          var next = VT.coin.spend(a.coins, n);
+          if (!next) { toast('Not enough coin — you have ' + VT.coin.format(a.coins), 'err'); return; }
+          a.coins = next;
+          toast('Spent ' + VT.coin.format(n), 'ok');
+          if (S.postToChat) postChat('spends ' + VT.coin.format(n));
+          save(); render();
+        } }, ['− Spend']),
+        coinAmt,
+        el('button', { class: 'btn sm', onClick: function () {
+          var n = VT.coin.parse(coinAmt.value);
+          if (!n) { toast('Could not read "' + coinAmt.value + '"', 'err'); return; }
+          a.coins = VT.coin.add(a.coins, n);
+          toast('Gained ' + VT.coin.format(n), 'ok');
+          save(); render();
+        } }, ['+ Earn'])
+      ]),
+      el('p', { class: 'muted' }, ['Type amounts like "12 gp", "5sp 3cp", or a bare number of copper.'])
+    ]);
+    view.appendChild(purse);
+
+    /* Damage resistances, from whatever granted them. */
+    var defCard = defencesPanel(a);
+    if (defCard) view.appendChild(defCard);
+
+    /* What you are carrying, and what of it you are wearing. */
+    var gearCard = gearPanel(a);
+    if (gearCard) view.appendChild(gearCard);
+
+    /* Languages, armour and weapons. Tools have their own card below because
+       they are the only one of the four you actually roll. */
+    var profCard = proficiencyCard(a);
+    if (profCard) view.appendChild(profCard);
+
+    /* tool proficiencies - a thieves' tools check is a real thing to roll */
+    if ((a.toolProf || []).length) {
+      var toolCard = el('div', { class: 'card' }, [el('h3', {}, ['Tools'])]);
+      var prof = VT.actor.prof(a);
+      a.toolProf.forEach(function (t) {
+        /* Which ability a tool check uses is the DM's call and changes with the
+           task - picking a lock is Dexterity, spotting a forgery Intelligence -
+           so offer the sensible default and let it be changed. */
+        var abil = TOOL_ABILITY[String(t).toLowerCase()] || 'dex';
+        var mod = VT.actor.abilityMod(a, abil) + prof;
+        var sel = selectOf(SRD.ABILITIES.map(function (k) {
+          return { value: k, label: SRD.ABILITY_NAME[k] };
+        }), abil, function (v) { abil = v; });
+        toolCard.appendChild(el('div', { class: 'rollrow' }, [
+          el('span', { class: 'lbl' }, [U.cap(t), el('span', { class: 'sub' }, ['  proficient'])]),
+          sel,
+          el('button', { class: 'btn sm', onClick: function () {
+            rollD20(U.cap(t) + ' (' + SRD.ABILITY_NAME[abil] + ')',
+                    VT.actor.abilityMod(a, abil) + prof);
+          } }, [sign(mod)])
+        ]));
+      });
+      view.appendChild(toolCard);
+    }
+
+    /* features - each with its own words behind a Read button */
     if ((a.features || []).length) {
       var featBox = el('div', {});
       var byLevel = {};
@@ -974,26 +971,28 @@
       Object.keys(byLevel).map(Number).sort(function (x, y) { return x - y; }).forEach(function (lv) {
         featBox.appendChild(el('div', { class: 'muted', style: { marginTop: '6px' } }, ['Level ' + lv]));
         byLevel[lv].forEach(function (f) {
-          var open = false;
-          var body = el('div', { class: 'hidden muted',
-            style: { padding: '2px 4px 6px', whiteSpace: 'pre-wrap' } });
-          featBox.appendChild(el('div', { class: 'rollrow', onClick: function () {
-            open = !open;
-            if (open && !body.textContent) {
-              var note = (a.featureNotes || {})[f.name];
-              var txt = VT.charbuild.featureText(f, (a.build && a.build.cls && a.build.cls.name) || '');
-              body.textContent = (note ? '\u25b8 ' + note + '\n\n' : '') +
-                (txt || 'Text unavailable - connect your 5etools data in Setup.');
-            }
-            body.classList.toggle('hidden', !open);
-          } }, [
+          /* Resolved when the button is pressed rather than up front: a
+             character has twenty features and reading all of their text to
+             draw a list nobody has asked to read yet is work for nothing. */
+          var note = (a.featureNotes || {})[f.name];
+          featBox.appendChild(el('div', { class: 'rollrow' }, [
             el('span', { class: 'lbl' }, [f.name,
               el('span', { class: 'sub' }, [
-                (f.subclass ? '  subclass' : '') +
-                ((a.featureNotes || {})[f.name] ? '  · applied' : '')
-              ])])
+                (f.subclass ? '  subclass' : '') + (note ? '  · applied' : '')
+              ])]),
+            el('button', {
+              class: 'btn sm read', title: 'Read what it does',
+              onClick: function () {
+                var txt = VT.charbuild.featureText(f, f.className ||
+                  (a.build && a.build.cls && a.build.cls.name) || '');
+                readerPanel(f.name,
+                  [f.className, 'level ' + f.level, f.subclass ? 'subclass' : null]
+                    .filter(Boolean).join(' \u00b7 '),
+                  (note ? note + '\n\n' : '') +
+                  (txt || 'Text unavailable - connect your 5etools data in Setup.'));
+              }
+            }, ['Read'])
           ]));
-          featBox.appendChild(body);
         });
       });
       view.appendChild(el('details', {}, [
@@ -1002,24 +1001,33 @@
       ]));
     }
 
-    /* what this character has chosen: fighting styles, invocations, feats */
-    if ((a.picked || []).length) {
-      var pickBox = el('div', {});
-      VT.choiceUI.renderPicked(pickBox, a, { onChange: render });
-      view.appendChild(el('details', {}, [
-        el('summary', {}, ['Choices - ' + a.picked.length]),
-        el('div', {}, [pickBox])
-      ]));
-    }
+    /* Neither the choice list nor the unspent-improvement warning is here any
+       more. Both are things you act on while building, and both are on the Edit
+       tab where the acting happens - repeating them on the play sheet put two
+       boxes between a player and their attunement slots every single session. */
 
-    var asi = a.asiStatus || { left: 0 };
-    if (asi.left > 0) {
-      view.appendChild(el('div', { class: 'card' }, [
-        el('h3', {}, ['Ability Score Improvement']),
-        el('div', { class: 'warn' }, [
-          asi.left + ' unspent - assign them in the Edit tab.'
-        ])
-      ]));
+    /* Feats. Their own card rather than a line in Features, because a feat is
+       something the player chose in place of an improvement and will want to
+       re-read; a class feature simply arrived. */
+    if ((a.feats || []).length) {
+      var featCard = el('div', { class: 'card' }, [el('h3', {}, ['Feats'])]);
+      a.feats.forEach(function (f) {
+        featCard.appendChild(el('div', { class: 'rollrow' }, [
+          el('span', { class: 'lbl' }, [f.name,
+            f.source ? el('span', { class: 'sub' }, ['  ' + f.source]) : null]),
+          el('button', {
+            class: 'btn sm read', title: 'Read what it does',
+            onClick: function () {
+              var rec = (FT.loaded && FT.byName) ? FT.byName('feat', f.name, f.source) : null;
+              var txt = '';
+              if (rec) { try { txt = VT.tags.toText(rec.entries || []); } catch (e) { txt = ''; } }
+              readerPanel(f.name, f.source || '',
+                txt || 'Text unavailable - connect your 5etools data in Setup.');
+            }
+          }, ['Read'])
+        ]));
+      });
+      view.appendChild(featCard);
     }
 
     /* attunement */
@@ -1148,10 +1156,6 @@
         card.appendChild(actionRow(a, act));
         var sl = S.castAt[act.name] || act.spellLevel;
         if (lv > 0) card.appendChild(castRow(a, act, sl, VT.upcast.at(act, sl)));
-        /* Most spells do more than their damage line says, and at the table a
-           player needs the words rather than just the dice. Folded away by
-           default so forty spells stay a list instead of an essay. */
-        if (act.desc) card.appendChild(spellText(act));
       });
       if (!(byLevel[lv] || []).length) {
         card.appendChild(el('div', { class: 'muted', style: { marginLeft: '6px' } }, [
@@ -1170,14 +1174,6 @@
         left, pact.count, 'pact'));
     }
     return card;
-  }
-
-  /* A spell's own words, folded away until asked for. */
-  function spellText(act) {
-    return el('details', { class: 'spellwrap' }, [
-      el('summary', { title: 'What it does' }, []),
-      el('div', { class: 'spelltext' }, [act.desc])
-    ]);
   }
 
   /* The head of a level's section: its name, and the slots that pay for it. */
@@ -1950,6 +1946,17 @@
     return card;
   }
 
+  /* The control that opens the reader. One function, so a spell, a feature and
+     an item all get the same button in the same place - the folded triangle
+     they used to share was easy to miss and easy to mistake for decoration. */
+  function readButton(title, sub, text) {
+    if (!text || !String(text).trim()) return null;
+    return el('button', {
+      class: 'btn sm read', title: 'Read what it does',
+      onClick: function () { readerPanel(title, sub, String(text).trim()); }
+    }, ['Read']);
+  }
+
   /* A pop-out reader.
 
      An item's text was folded under its row behind a 16px triangle, which was
@@ -2102,6 +2109,10 @@
       line.appendChild(el('span', { class: 'mod', title: 'Uses remaining',
         style: { color: left ? 'var(--green)' : 'var(--red)' } }, [left + '/' + act.uses.max]));
     }
+    /* Last, so it sits at the end of the row like the item one does. A spell
+       decided on while preparing needs its words as much as an item does. */
+    var read = readButton(act.name, describe(act), act.desc);
+    if (read) line.appendChild(read);
     return line;
   }
 
@@ -2820,15 +2831,28 @@
         ])
       ]);
       (a.build && a.build.asi || []).forEach(function (entry, i) {
-        asiCard.appendChild(el('div', { class: 'rollrow' }, [
-          el('span', { class: 'lbl' }, [
-            Object.keys(entry.picks || {}).map(function (k) {
+        var label = entry.feat
+          ? entry.feat.name
+          : (Object.keys(entry.picks || {}).map(function (k) {
               return SRD.ABILITY_NAME[k] + ' ' + sign(entry.picks[k]);
-            }).join(', ') || 'empty'
-          ]),
+            }).join(', ') || 'empty');
+        asiCard.appendChild(el('div', { class: 'rollrow' }, [
+          el('span', { class: 'lbl' }, [label,
+            entry.feat ? el('span', { class: 'sub' }, ['  feat']) : null]),
+          entry.feat
+            ? el('button', { class: 'btn sm read', title: 'Read what it does',
+                onClick: function () {
+                  var rec = FT.loaded && FT.byName
+                    ? FT.byName('feat', entry.feat.name, entry.feat.source) : null;
+                  var txt = '';
+                  if (rec) { try { txt = VT.tags.toText(rec.entries || []); } catch (e) {} }
+                  readerPanel(entry.feat.name, entry.feat.source || '',
+                    txt || 'Text unavailable - connect your 5etools data in Setup.');
+                } }, ['Read'])
+            : null,
           el('button', { class: 'btn sm danger', onClick: function () {
             a.build.asi.splice(i, 1);
-            rederive(a, 'Improvement removed');
+            rederive(a, entry.feat ? 'Feat removed' : 'Improvement removed');
           } }, ['×'])
         ]));
       });
@@ -2842,26 +2866,53 @@
         var rowOne = el('div', { class: 'row hidden' }, [
           selectOf(abilOpts, pickA, function (v) { pickA = v; })
         ]);
-        asiCard.appendChild(labelled('Style', selectOf([
+        /* The books offer a straight trade at every improvement: two points, or
+           a feat. Recording a feat as a note was the old advice and it meant the
+           feat did nothing - no ability bonus, no text to read, and the slot
+           still showing as unspent. */
+        var featList = FT.get('feat') || [];
+        var pickFeat = featList[0] || null;
+        var rowFeat = el('div', { class: 'row hidden' }, [
+          selectOf(featList.map(function (f, i) {
+            return { value: String(i), label: f.name + (f.source ? '  (' + f.source + ')' : '') };
+          }), '0', function (v) { pickFeat = featList[parseInt(v, 10)] || null; })
+        ]);
+
+        var styles = [
           { value: 'two', label: '+1 to two abilities' },
           { value: 'one', label: '+2 to one ability' }
-        ], mode, function (v) {
+        ];
+        if (featList.length) styles.push({ value: 'feat', label: 'a feat instead' });
+
+        asiCard.appendChild(labelled('Style', selectOf(styles, mode, function (v) {
           mode = v;
           rowTwo.classList.toggle('hidden', v !== 'two');
           rowOne.classList.toggle('hidden', v !== 'one');
+          rowFeat.classList.toggle('hidden', v !== 'feat');
         })));
         asiCard.appendChild(rowTwo);
         asiCard.appendChild(rowOne);
+        asiCard.appendChild(rowFeat);
         asiCard.appendChild(el('button', { class: 'btn sm primary', onClick: function () {
+          a.build = a.build || {};
+          if (mode === 'feat') {
+            if (!pickFeat) { toast('Pick a feat first', 'err'); return; }
+            a.build.asi = (a.build.asi || []).concat([
+              { feat: { name: pickFeat.name, source: pickFeat.source || null } }
+            ]);
+            rederive(a, 'Took ' + pickFeat.name);
+            return;
+          }
           var picks = {};
           if (mode === 'one') picks[pickA] = 2;
           else { picks[pickA] = (picks[pickA] || 0) + 1; picks[pickB] = (picks[pickB] || 0) + 1; }
-          a.build = a.build || {};
           a.build.asi = (a.build.asi || []).concat([{ picks: picks }]);
           rederive(a, 'Ability scores improved');
         } }, ['Assign']));
         asiCard.appendChild(el('p', { class: 'muted' }, [
-          'Scores cap at 20. Taking a feat instead? Record it as a custom feature below.'
+          'Scores cap at 20. A feat spends the improvement instead, and its own ' +
+          'ability bonus still applies.' +
+          (featList.length ? '' : ' Connect your data in Setup to choose one.')
         ]));
       }
       view.appendChild(asiCard);
@@ -2963,6 +3014,20 @@
         toast('Added ' + rec.name, 'ok');
         render();
       }, function (i) { return i.name + (i.rarity ? '  (' + i.rarity + ')' : ''); }));
+
+      /* Feats granted outside an improvement - a variant human's free one, a
+         DM's reward, a supplement's rule. Kept apart from the ones spent on an
+         ASI so they do not eat that budget; see charbuild.featRefs. */
+      var feats = FT.get('feat') || [];
+      if (feats.length) {
+        add.appendChild(addPicker('Feat', feats, function (rec) {
+          a.build = a.build || {};
+          a.build.feats = (a.build.feats || []).concat([
+            { name: rec.name, source: rec.source || null }
+          ]);
+          rederive(a, 'Took ' + rec.name);
+        }, function (f) { return f.name + (f.source ? '' : ''); }));
+      }
 
       /* Tools: owning one and being proficient with it are different things,
          and only the second makes it rollable, so do both. */

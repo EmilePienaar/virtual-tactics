@@ -45,7 +45,10 @@ Things that work and have been checked against real data.
   correctly suppressing Unarmored Movement and Fast Movement.
 - **Proficiencies** — languages, skills, tools, weapons and armour, worked out
   from class, race and background and editable by hand, with a flat per-skill
-  bonus you set yourself. A weapon you are not trained
+  bonus you set yourself.
+- **Feats** — taken in place of an ability score improvement, or granted
+  outright from "Add from your data". Their fixed ability bonuses apply and they
+  survive a level-up. A weapon you are not trained
   with loses your proficiency bonus; armour you are not trained with is
   disadvantage on Strength and Dexterity rolls, and no spellcasting.
 - **Magic item effects** — ability scores, AC, saves, resistances, speed, spell
@@ -108,6 +111,12 @@ It works, but the record carries a `save` and `dc` that are not real.
 are separate; only the second puts it on the sheet. The Edit tab's Tool picker
 grants both.
 
+**A feat's prose does nothing.** Only the structured `ability` field is applied,
+so a feat that grants +1 Constitution raises the score, and Tough's "hit point
+maximum increases by twice your level" does not. The feat is recorded, listed
+and readable; the number has to be set by hand in Core numbers. Same line the
+feature engine draws everywhere else.
+
 **Nothing spends a language.** "Two of your choice" is counted and shown as
 still-to-pick, but nothing stops you adding three, and nothing checks that what
 you typed is a real language. Deliberate — a DM invents languages, and the
@@ -156,6 +165,11 @@ it.** Only flagged records may be redistributed. Do not widen the filter, do not
 add `srd52` alongside `srd` without deciding what edition the bundle is, and do
 not drop the `srd: "Some Name"` rename — that rename is what keeps Product
 Identity out of the shipped data.
+
+**The Sheet tab's card order is a list in one function, and blocks were moved
+wholesale.** Each block is delimited by its own opening comment; a reorder means
+moving whole comment-to-comment spans, not lines. If you add a card, put it
+where a hand would reach for it: often-used at the top, set-once at the bottom.
 
 **Any render destroys focus; that is why `data-k` exists.** `render()` clears
 the view and rebuilds it, so a field being typed into loses its focus and caret
