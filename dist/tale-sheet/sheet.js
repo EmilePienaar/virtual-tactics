@@ -26,6 +26,7 @@
     adv: 0, crit: false,
     hpAmount: 5,          // survives re-render: you often heal what you just took
     coinEntry: '10 gp',
+    lootPaste: '',        // ditto: a pasted code must outlive an interrupting render
     tracked: {},
     linked: null,          // { id, name, hp:{value,max} }
     postToChat: false,
@@ -53,7 +54,10 @@
       if (S.tab === 'sheet') render();
     } else if (evt.kind === 'creatureRemoved' && p.id === S.linked.id) {
       S.linked = null;
-      render();
+      /* Only the Sheet tab shows the linked mini, so only it needs redrawing.
+         Redrawing the Edit tab for this would interrupt whatever is being
+         typed there to change nothing on screen. */
+      if (S.tab === 'sheet') render();
     }
   };
 
@@ -76,6 +80,7 @@
       FT.loadCache().catch(function () { return null; }),
       initClientRole()
     ]).then(function () {
+      reconcileAll();
       render();
       autoConnectData();
       if (!live) toast('Running outside TaleSpire — dice are simulated locally.', 'err');
@@ -106,6 +111,7 @@
       return FT.loadAll(function () {}).then(function (stats) {
         if (stats.records) {
           FT.saveCache();
+          reconcileAll();
           toast('Loaded ' + stats.records + ' records from the bundled data folder', 'ok');
           render();
         }
@@ -117,9 +123,20 @@
     return FT.loadAll(function () {}).then(function (stats) {
       if (!stats.records) return;
       FT.saveCache();
+      reconcileAll();
       toast('Loaded ' + stats.records + ' records from your ' + what, 'ok');
       render();
     }).catch(function () {});
+  }
+
+  /* Anything bought before there was data to resolve it against is a bare name
+     in a bag. Now that there is data, turn those back into items. */
+  function reconcileAll() {
+    if (!VT.gear || !VT.gear.reconcile) return 0;
+    var n = 0;
+    S.chars.forEach(function (c) { n += VT.gear.reconcile(c); });
+    if (n) save();
+    return n;
   }
 
   /* In a browser `hasInitialized` never comes; give TaleSpire a moment first. */
@@ -160,6 +177,7 @@
     if (!Array.isArray(a.resources)) a.resources = [];
     if (!a.slotsUsed) a.slotsUsed = {};
     if (a.expertiseSlots == null) a.expertiseSlots = 0;
+    if (!a.skillBonus) a.skillBonus = {};
     /* Characters saved before proficiencies existed have no lists. Work them
        out from the build if the compendium can still resolve it; leave them
        absent if it cannot, since an absent list costs nothing and a guessed
@@ -410,13 +428,48 @@
     sel.value = S.activeId || '';
   }
 
-  /* ==== render =========================================================== */
+  /* ==== render ===========================================================
+     render() throws the whole view away and builds it again, which is fine for
+     a panel of buttons and fatal for a text field: anything that renders while
+     someone is typing takes the focus and the caret with it, and the next
+     keystroke lands nowhere. Inside TaleSpire the sheet is not the only thing
+     that can cause a render - a mini's hit points changing, a client joining,
+     the GM polling the table - so the Edit tab could lose focus after every
+     single character, with nothing in the sheet's own code to blame.
+
+     Rather than hunt every trigger in an environment we cannot step through,
+     make the rebuild survivable: note which field had focus and where the
+     caret was, and put both back afterwards. Fields opt in with `data-k`, a
+     key stable across renders. Anything without one behaves as before. */
+  function focusedField() {
+    var n = document.activeElement;
+    if (!n || !view.contains(n) || !n.getAttribute) return null;
+    var key = n.getAttribute('data-k');
+    if (!key) return null;
+    var keep = { key: key, start: null, end: null };
+    /* selectionStart throws on inputs that do not carry a selection (number,
+       range); the field still deserves its focus back. */
+    try { keep.start = n.selectionStart; keep.end = n.selectionEnd; } catch (e) {}
+    return keep;
+  }
+
+  function restoreField(keep) {
+    if (!keep) return;
+    var n = view.querySelector('[data-k="' + keep.key + '"]');
+    if (!n) return;
+    n.focus();
+    if (keep.start == null) return;
+    try { n.setSelectionRange(keep.start, keep.end); } catch (e) {}
+  }
+
   function render() {
+    var keep = focusedField();
     syncChrome();
     syncCharPick();
     U.clear(view);
     ({ sheet: renderSheet, edit: renderEdit, party: renderParty,
        build: renderBuild, setup: renderSetup }[S.tab] || renderSheet)();
+    restoreField(keep);
     if (S.tab === 'sheet' || S.tab === 'edit') shareSoon();
   }
 
@@ -1841,34 +1894,60 @@
           !VT.proficiency.armourOk(a, e)) {
         what += ' · beyond your training';
       }
-      card.appendChild(el('div', { class: 'rollrow' }, [
-        el('span', { class: 'lbl' }, [
-          e.name + (e.qty > 1 ? '  ×' + e.qty : ''),
-          el('span', { class: 'sub' }, ['  ' + what])
-        ]),
-        el('button', {
-          class: 'btn sm' + (e.equipped ? ' on' : ''),
-          title: e.equipped ? 'Take it off - it stays in your pack' : 'Put it on',
-          onClick: function () { VT.gear.toggle(a, e); save(); render(); }
-        }, [e.equipped ? 'Worn' : 'Wear'])
-      ]));
+      card.appendChild(inventoryRow(a, e, what, function () {
+        VT.gear.toggle(a, e); save(); render();
+      }));
     });
 
     if (rest.length) {
       card.appendChild(el('div', { class: 'muted', style: { marginTop: '8px' } }, ['Carried']));
       rest.forEach(function (e) {
-        card.appendChild(el('div', { class: 'rollrow' }, [
-          el('span', { class: 'lbl' }, [
-            e.name + (e.qty > 1 ? '  ×' + e.qty : ''),
-            e.note ? el('span', { class: 'sub' }, ['  ' + e.note]) : null
-          ])
-        ]));
+        /* Not wearable, so no Wear button - but the description, the rarity
+           and the note all still belong on the row. */
+        /* The shop's note for a magic item is usually just its rarity, so the
+           two collapse into one rather than reading "common · common". */
+        var bits = [e.rarity, e.note].filter(Boolean).filter(function (v, i, all) {
+          return all.indexOf(v) === i;
+        });
+        var what = bits.join(' · ');
+        card.appendChild(inventoryRow(a, e, what, null));
       });
     }
     card.appendChild(el('p', { class: 'muted' }, [
       'Taking something off leaves it in your pack. Add and remove items on the Edit tab.'
     ]));
     return card;
+  }
+
+  /* One inventory row. Worn things get a Wear button; everything gets its own
+     words if we have them.
+
+     Carried items used to render as a name and nothing else - no way to read
+     what the thing does, which for a potion or a magic item is the only part
+     that matters. The description is folded away so a full pack stays a list
+     rather than an essay, exactly as spells are on the Sheet tab. */
+  function inventoryRow(a, e, what, onToggle) {
+    var head = el('div', { class: 'rollrow' }, [
+      el('span', { class: 'lbl' }, [
+        e.name + (e.qty > 1 ? '  ×' + e.qty : ''),
+        what ? el('span', { class: 'sub' }, ['  ' + what]) : null
+      ]),
+      onToggle
+        ? el('button', {
+            class: 'btn sm' + (e.equipped ? ' on' : ''),
+            title: e.equipped ? 'Take it off - it stays in your pack' : 'Put it on',
+            onClick: onToggle
+          }, [e.equipped ? 'Worn' : 'Wear'])
+        : null
+    ]);
+    if (!e.desc) return head;
+    var wrap = el('div', {});
+    wrap.appendChild(head);
+    wrap.appendChild(el('details', { class: 'spellwrap' }, [
+      el('summary', { title: 'What it does' }, []),
+      el('div', { class: 'spelltext' }, [e.desc])
+    ]));
+    return wrap;
   }
 
   /* An item's charges, spent from the item rather than from you. */
@@ -2544,6 +2623,7 @@
     var idc = el('div', { class: 'card' }, [el('h3', {}, ['Identity'])]);
     idc.appendChild(labelled('Name', el('input', {
       type: 'text', value: a.name,
+      'data-k': 'name',
       onInput: function (e) { a.name = e.target.value; save(); }
     })));
     var lvlOut = el('span', { class: 'mod' }, [String(a.level)]);
@@ -2820,6 +2900,66 @@
       ]));
     }
 
+    /* --- skills ---
+       The Sheet tab toggles proficiency, which is most of what anyone needs.
+       This is the rest: expertise on any skill rather than only the ones a
+       class allots, and a flat bonus per skill for everything the books grant
+       that nothing here models - a feat, an item's +5 to one skill, a ruling.
+
+       The bonus is stored apart from proficiency so that levelling recomputes
+       one and leaves the other exactly as set. */
+    var skillCard = el('div', { class: 'card' }, [el('h3', {}, ['Skills'])]);
+    a.skillProf = a.skillProf || [];
+    a.expertise = a.expertise || [];
+    a.skillBonus = a.skillBonus || {};
+    if (a.skillChoices) {
+      skillCard.appendChild(el('div', { class: 'warn' }, [
+        a.skillChoices + ' skill' + (a.skillChoices > 1 ? 's' : '') +
+        ' of your choice from your race or background — they are granted ' +
+        'without saying which, so pick them here.'
+      ]));
+    }
+    Object.keys(SKILLS).sort().forEach(function (name) {
+      var isProf = a.skillProf.indexOf(name) >= 0;
+      var isExp = a.expertise.indexOf(name) >= 0;
+      var bonus = Number(a.skillBonus[name]) || 0;
+      skillCard.appendChild(el('div', { class: 'rollrow' }, [
+        el('span', {
+          class: 'pip' + (isExp ? ' exp' : isProf ? ' on' : ''),
+          title: isExp ? 'Expertise — click to clear'
+               : isProf ? 'Proficient — click for expertise' : 'Not proficient — click to add',
+          onClick: function () {
+            /* One control, three states, in the order you actually want them:
+               nothing, proficient, expertise, nothing again. */
+            if (isExp) {
+              a.expertise = a.expertise.filter(function (x) { return x !== name; });
+              a.skillProf = a.skillProf.filter(function (x) { return x !== name; });
+            } else if (isProf) {
+              a.expertise.push(name);
+            } else {
+              a.skillProf.push(name);
+            }
+            if (a.build) {
+              a.build.skillProf = a.skillProf.slice();
+              a.build.expertise = a.expertise.slice();
+            }
+            save(); render();
+          }
+        }),
+        el('span', { class: 'lbl' }, [U.cap(name),
+          el('span', { class: 'sub' }, ['  ' + SRD.ABILITY_NAME[SKILLS[name]] +
+            (isExp ? ' · expertise' : isProf ? ' · proficient' : '')])]),
+        bonusField(a, skillCard, name, bonus),
+        el('span', { class: 'mod', 'data-tot': name }, [sign(VT.features.skillMod(a, name))])
+      ]));
+    });
+    skillCard.appendChild(el('p', { class: 'muted' }, [
+      'The pip cycles: not proficient, proficient, expertise. The number beside ' +
+      'it is a flat bonus on top, for anything the sheet does not work out itself. ' +
+      'Both survive a level-up.'
+    ]));
+    view.appendChild(skillCard);
+
     /* --- proficiencies ---
        Armour and weapons are toggles because there are only ever six answers
        that matter; languages and named weapons are free text because the list
@@ -2894,6 +3034,7 @@
       function adder(label, list, placeholder, records) {
         var typed = '';
         var input = el('input', { type: 'text', class: 'grow', placeholder: placeholder,
+          'data-k': 'prof-' + label.toLowerCase(),
           onInput: function (e) { typed = e.target.value; } });
         var row = el('div', { class: 'row' }, [el('label', {}, [label]), input,
           el('button', { class: 'btn sm', onClick: function () {
@@ -2995,12 +3136,12 @@
     });
     var invName = '', invQty = 1, invNote = '';
     inv.appendChild(el('div', { class: 'row', style: { marginTop: '6px' } }, [
-      el('input', { type: 'text', placeholder: 'Item bought or found',
+      el('input', { type: 'text', placeholder: 'Item bought or found', 'data-k': 'inv-name',
         onInput: function (e) { invName = e.target.value; } }),
       numInput(1, 1, 9999, function (v) { invQty = v | 0; })
     ]));
     inv.appendChild(el('div', { class: 'row' }, [
-      el('input', { type: 'text', placeholder: 'note (optional)',
+      el('input', { type: 'text', placeholder: 'note (optional)', 'data-k': 'inv-note',
         onInput: function (e) { invNote = e.target.value; } }),
       el('button', { class: 'btn sm primary', onClick: function () {
         if (!invName.trim()) { toast('Give it a name', 'err'); return; }
@@ -3016,34 +3157,40 @@
        both carry a matching interop id, and a manifest declaring one is not
        always accepted - so the shop writes a short code instead and this reads
        it. Paste, check what it says, take it. */
-    var pasted = '';
+    /* Held on S rather than in a local, so a render arriving mid-paste does not
+       empty the box - the same reason hpAmount and coinEntry live there. */
+    var pasted = S.lootPaste || '';
     var pasteReport = el('div', { class: 'muted' });
     var takeBtn = el('button', { class: 'btn sm primary', disabled: true }, ['Collect']);
-    var pasteIn = el('textarea', {
-      class: 'lootcode', rows: 2,
-      placeholder: 'Paste a code from Tale Shop here',
-      onInput: function (e) {
-        pasted = e.target.value;
-        var got = SHOPS.parseLootCode(pasted);
-        takeBtn.disabled = !got;
-        if (!pasted.trim()) { pasteReport.textContent = ''; pasteReport.className = 'muted'; return; }
-        if (!got) {
-          pasteReport.textContent = 'That does not look like a Tale Shop code.';
-          pasteReport.className = 'warn';
-          return;
-        }
-        pasteReport.textContent = 'Ready to collect: ' + SHOPS.describeLoot(got, VT.coin.system()) +
-          (got.from ? ' — from ' + got.from : '');
-        pasteReport.className = 'muted';
+    /* What the box says about what is in it. Pulled out of the input handler so
+       it can also run at build time - a code restored across a render has to
+       come back with its verdict and its Collect button, not just its text. */
+    function refreshPaste() {
+      var got = SHOPS.parseLootCode(pasted);
+      takeBtn.disabled = !got;
+      if (!pasted.trim()) { pasteReport.textContent = ''; pasteReport.className = 'muted'; return; }
+      if (!got) {
+        pasteReport.textContent = 'That does not look like a Tale Shop code.';
+        pasteReport.className = 'warn';
+        return;
       }
+      pasteReport.textContent = 'Ready to collect: ' + SHOPS.describeLoot(got, VT.coin.system()) +
+        (got.from ? ' — from ' + got.from : '');
+      pasteReport.className = 'muted';
+    }
+
+    var pasteIn = el('textarea', {
+      class: 'lootcode', rows: 2, 'data-k': 'lootcode', value: pasted,
+      placeholder: 'Paste a code from Tale Shop here',
+      onInput: function (e) { pasted = S.lootPaste = e.target.value; refreshPaste(); }
     });
+    refreshPaste();
     takeBtn.addEventListener('click', function () {
       var got = SHOPS.parseLootCode(pasted);
       if (!got) { toast('Nothing readable in that code', 'err'); return; }
       acceptGrant({ items: got.items, coins: got.coins, from: got.from || 'Tale Shop' });
-      pasteIn.value = ''; pasted = '';
-      takeBtn.disabled = true;
-      pasteReport.textContent = '';
+      pasteIn.value = ''; pasted = S.lootPaste = '';
+      refreshPaste();
     });
     inv.appendChild(el('h3', { style: { marginTop: '14px' } }, ['Collect from Tale Shop']));
     inv.appendChild(pasteIn);
@@ -3081,8 +3228,26 @@
     view.appendChild(el('div', { class: 'card' }, [
       el('h3', {}, ['Notes']),
       el('textarea', { rows: 4, value: a.notes || '',
-        onInput: function (e) { a.notes = e.target.value; a.notesCustom = true; save(); } })
+        'data-k': 'notes',
+      onInput: function (e) { a.notes = e.target.value; a.notesCustom = true; save(); } })
     ]));
+  }
+
+  /* One skill's hand-set bonus. Deliberately does NOT re-render: this is a
+     field being typed into, and rebuilding the card underneath the caret is
+     precisely the bug the Edit tab had. The total beside it is refreshed in
+     place instead, so the row still tells the truth while you type. */
+  function bonusField(a, card, name, bonus) {
+    var input = numInput(bonus, -20, 20, function (v) {
+      if (v) a.skillBonus[name] = v; else delete a.skillBonus[name];
+      if (a.build) a.build.skillBonus = U.clone(a.skillBonus);
+      save();
+      var tot = card.querySelector('[data-tot="' + name + '"]');
+      if (tot) tot.textContent = sign(VT.features.skillMod(a, name));
+    });
+    input.setAttribute('data-k', 'skillbonus-' + name);
+    input.title = 'A flat bonus on this skill, on top of everything worked out for you';
+    return input;
   }
 
   function numInput(v, min, max, cb, step) {
@@ -3107,6 +3272,7 @@
     ]);
 
     body.appendChild(labelled('Name', el('input', { type: 'text', value: act.name,
+      'data-k': 'act-name-' + i,
       onInput: function (e) { act.name = e.target.value; save(); } })));
     body.appendChild(labelled('Type', selectOf([
       { value: 'melee', label: 'Melee' }, { value: 'ranged', label: 'Ranged' },
@@ -3124,7 +3290,7 @@
     }
     if (act.kind !== 'buff') {
       body.appendChild(labelled('Dice', el('input', { type: 'text', value: act.dmg || '',
-        placeholder: '1d8+3',
+        placeholder: '1d8+3', 'data-k': 'act-dmg-' + i,
         onInput: function (e) { act.dmg = e.target.value; save(); } })));
     }
     if (act.kind === 'melee' || act.kind === 'ranged' || act.kind === 'save') {
@@ -3312,7 +3478,10 @@
     if (!evt) return;
     var k = evt.kind;
     if (k === 'clientModeChanged' || k === 'clientJoinedBoard') {
-      initClientRole().then(function () { render(); });
+      /* Whether we are the GM changes which tabs exist, so this does have to
+         redraw - but not while someone is mid-word on the Edit tab, where the
+         only thing it would change is the tab strip. */
+      initClientRole().then(function () { if (S.tab !== 'edit') render(); });
       if (S.isGM) pollTable();
     } else if (k === 'clientLeftBoard') {
       var id = evt.payload && evt.payload.client && evt.payload.client.id;
@@ -3362,12 +3531,33 @@
       var have = a.inventory.find(function (x) {
         return String(x.name).toLowerCase() === String(it.name).toLowerCase();
       });
-      if (have) have.qty = (have.qty || 1) + qty;
-      else if (it.item && VT.gear) {
-        /* Comes with its own record, so put it in through the gear path and it
-           arrives wearable, attunable and with its effects already read. */
-        VT.gear.add(a, it.item, { qty: qty, note: it.note || '' });
-      } else a.inventory.push({ name: it.name, qty: qty, note: it.note || '' });
+      if (have) { have.qty = (have.qty || 1) + qty; got.push(qty + ' x ' + it.name); return; }
+
+      /* Everything that CAN arrive as a real item should. Three routes, in
+         order of how much we were told:
+
+           1. the code carried the whole record   - a forged or magic item
+           2. we can look the name up in the data - anything bought in a shop,
+              which sends a name and a printing rather than a record, because a
+              shop's stock has to fit in TaleSpire's 500-character messages
+           3. neither, so it is a line of text
+
+         Route 2 is the one that was missing. Without it every shop purchase
+         landed as a bare name: no equip button, no description, no effects -
+         the item was in the bag and there was nothing you could do with it. */
+      var rec = it.item || null;
+      if (!rec && FT && FT.loaded && FT.byName) {
+        rec = FT.byName('item', it.name, it.source || null) ||
+              FT.byName('item', it.name, null) || null;
+      }
+      if (rec && VT.gear) {
+        VT.gear.add(a, rec, { qty: qty, note: it.note || '' });
+      } else {
+        /* Nothing to resolve against - keep what the shop told us, so the row
+           can still say what it is even with no data connected. */
+        a.inventory.push({ name: it.name, qty: qty, note: it.note || '',
+                           source: it.source || undefined });
+      }
       got.push(qty + ' x ' + it.name);
     });
 

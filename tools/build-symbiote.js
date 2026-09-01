@@ -112,6 +112,40 @@ function build(name) {
     }
   }
 
+  /* srd/ travels with the symbiote too, on the same reasoning as homebrew/ and
+     under a narrower rule: the SRD is the one data set that may be shared, so
+     bundling it is what lets the sheet work before anyone has connected a data
+     folder. It ships empty from a source checkout; whatever is listed in
+     srd/index.json is copied verbatim.
+
+     Every file the index names must exist, for the same reason homebrew's must:
+     a symbiote that fetches a file that is not there fails silently at the
+     table, and the build is the only place that can still catch it. */
+  const SRD_SRC = path.join(ROOT, 'srd');
+  if (fs.existsSync(path.join(SRD_SRC, 'index.json'))) {
+    const idx = JSON.parse(fs.readFileSync(path.join(SRD_SRC, 'index.json'), 'utf8'));
+    const wanted = [];
+    for (const kind of Object.keys(idx)) {
+      for (const f of idx[kind] || []) if (!wanted.includes(f)) wanted.push(f);
+    }
+    const stale = wanted.filter(f => !fs.existsSync(path.join(SRD_SRC, f)));
+    if (stale.length) {
+      console.error('ERROR [' + name + ']: srd/index.json lists missing files:', stale);
+      process.exit(1);
+    }
+    if (wanted.length) {
+      const SRD_OUT = path.join(OUT, 'srd');
+      fs.mkdirSync(SRD_OUT, { recursive: true });
+      fs.copyFileSync(path.join(SRD_SRC, 'index.json'), path.join(SRD_OUT, 'index.json'));
+      for (const f of wanted) {
+        const dest = path.join(SRD_OUT, f);
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.copyFileSync(path.join(SRD_SRC, f), dest);
+      }
+      SRD_SHIPPED[name] = wanted;
+    }
+  }
+
   /* sanity: the entry point must be self-contained and complete */
   const manifest = JSON.parse(fs.readFileSync(path.join(OUT, 'manifest.json'), 'utf8'));
   const entry = manifest.entryPoint.replace(/^\//, '');
@@ -155,13 +189,17 @@ function build(name) {
   let size = files.reduce((n, f) => n + fs.statSync(path.join(OUT, f)).size, 0);
   const hb = HB_SHIPPED[name] || [];
   for (const f of hb) size += fs.statSync(path.join(OUT, 'homebrew', f)).size;
+  const srd = SRD_SHIPPED[name] || [];
+  for (const f of srd) size += fs.statSync(path.join(OUT, 'srd', f)).size;
   console.log('Wrote dist/' + name + '/  "' + manifest.name + '"  (' +
     files.length + ' files, ' + (size / 1024).toFixed(0) + ' KB' +
-    (hb.length ? ', + ' + hb.length + ' homebrew' : '') + ')');
+    (hb.length ? ', + ' + hb.length + ' homebrew' : '') +
+    (srd.length ? ', + ' + srd.length + ' SRD' : '') + ')');
 }
 
 const INTEROP_SEEN = {};
 const HB_SHIPPED = {};
+const SRD_SHIPPED = {};
 SYMBIOTES.forEach(build);
 
 /* Two symbiotes sharing an interop id is how the API lets them message each

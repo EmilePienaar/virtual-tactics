@@ -207,6 +207,24 @@
     return actor;
   }
 
+  /* The item's own words, kept on the entry so the sheet can show them.
+
+     Kept rather than looked up because the sheet has to work for a player with
+     no data connected: an item bought from the shop and collected on a laptop
+     with no 5etools folder should still be readable. Capped, because a saved
+     character rides in symbiote storage and a few magic items with full text
+     would otherwise be most of the blob. */
+  var DESC_CAP = 700;
+
+  function describeItem(item) {
+    if (!item || !VT.tags || !VT.tags.toText) return '';
+    var text = '';
+    try { text = VT.tags.toText(item.entries || []) || ''; } catch (e) { return ''; }
+    text = String(text).trim();
+    if (!text) return '';
+    return text.length > DESC_CAP ? text.slice(0, DESC_CAP - 1).trim() + '…' : text;
+  }
+
   /* Put an item into the bag, as gear when it is wearable. */
   function add(actor, item, opts) {
     opts = opts || {};
@@ -219,15 +237,54 @@
       gear: g || undefined,
       equipped: g ? !!opts.equipped : undefined
     };
+    if (item.source) entry.source = item.source;
+    if (item.rarity && item.rarity !== 'none') entry.rarity = item.rarity;
+    var desc = describeItem(item);
+    if (desc) entry.desc = desc;
     if (VT.itemfx) VT.itemfx.tag(entry, item);
     actor.inventory.push(entry);
     if (entry.equipped) equip(actor, entry);
     return entry;
   }
 
+  /* Upgrade bare inventory entries once there is data to resolve them against.
+
+     An item bought from a shop arrives as a name and a printing, and before
+     this it stayed a name forever: no equip button, no description, no
+     effects. Anything already sitting in a player's bag from before is in the
+     same state, so this runs over the whole inventory whenever a data source
+     finishes connecting.
+
+     Deliberately additive. It fills in `gear`, `desc`, `fx` and `rarity` and
+     touches nothing else - never the name, never the quantity, never the note,
+     and never an entry that already has gear. A player's hand-written "bag of
+     rocks" that happens to share a name with a real item gains a description
+     and loses nothing. Returns how many it managed to upgrade. */
+  function reconcile(actor) {
+    if (!actor || !VT.fivetools || !VT.fivetools.loaded || !VT.fivetools.byName) return 0;
+    var fixed = 0;
+    entries(actor).forEach(function (e) {
+      if (!e || !e.name) return;
+      if (e.gear || e.desc || e.fx) return;             /* already resolved */
+      var rec = VT.fivetools.byName('item', e.name, e.source || null) ||
+                VT.fivetools.byName('item', e.name, null);
+      if (!rec) return;
+      var g = fromItem(rec);
+      if (g) { e.gear = g; if (e.equipped == null) e.equipped = false; }
+      var desc = describeItem(rec);
+      if (desc) e.desc = desc;
+      if (rec.source && !e.source) e.source = rec.source;
+      if (rec.rarity && rec.rarity !== 'none' && !e.rarity) e.rarity = rec.rarity;
+      if (VT.itemfx) VT.itemfx.tag(e, rec);
+      fixed++;
+    });
+    if (fixed) recompute(actor);
+    return fixed;
+  }
+
   VT.gear = {
-    slotOf: slotOf, fromItem: fromItem, add: add,
-    armour: armour, shield: shield,
+    slotOf: slotOf, fromItem: fromItem, add: add, reconcile: reconcile,
+    armour: armour, shield: shield, describeItem: describeItem,
     equip: equip, unequip: unequip, toggle: toggle,
     recompute: recompute,
     stealthDisadvantage: stealthDisadvantage, speedPenalty: speedPenalty,

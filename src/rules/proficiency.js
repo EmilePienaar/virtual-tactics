@@ -112,11 +112,12 @@
      multiclass.proficiencies() already works out. Race and background are read
      here because nothing else does.
 
-     Returns {armor, weapons, languages, languageChoices}. Tools stay where
-     they are - choices.js already reads them out of prose, which is a harder
-     job than this one and not worth duplicating. */
+     Returns {armor, weapons, skills, languages, languageChoices, skillChoices}.
+     Tools stay where they are - choices.js already reads them out of prose,
+     which is a harder job than this one and not worth duplicating. */
   function gather(c) {
-    var out = { armor: [], weapons: [], languages: [], languageChoices: 0 };
+    var out = { armor: [], weapons: [], skills: [], languages: [],
+                languageChoices: 0, skillChoices: 0 };
     if (!c) return out;
 
     if (VT.multiclass && c.classes && c.classes.length) {
@@ -125,12 +126,20 @@
       out.weapons = listOf(mc.weapons);
     }
 
+    /* Skills from race and background. The class side is a CHOICE and is made
+       on the choice tree, so it is not gathered here - but a race that simply
+       grants Perception, and a background that simply grants two skills, were
+       being dropped entirely. They are written as a map, {"survival": true,
+       "nature": true}, which is the same shape as the rest of this file's
+       input, so it costs one more line to read them. */
     [c.race, c.subrace, c.background].forEach(function (rec) {
       if (!rec) return;
       merge(out.armor, listOf(rec.armorProficiencies));
       merge(out.weapons, listOf(rec.weaponProficiencies));
       merge(out.languages, listOf(rec.languageProficiencies));
+      merge(out.skills, skillsIn(rec.skillProficiencies));
       out.languageChoices += choicesIn(rec.languageProficiencies);
+      out.skillChoices += choicesIn(rec.skillProficiencies);
     });
 
     /* Everyone speaks the local tongue. The books assume it rather than
@@ -141,6 +150,18 @@
 
   function merge(target, list) {
     list.forEach(function (v) { if (target.indexOf(v) < 0) target.push(v); });
+  }
+
+  /* Skill names have to survive normalisation intact. `clean` strips a trailing
+     " weapons"/" armour", which no skill name ends in, but it also lowercases -
+     and lowercase is exactly the form skillProf is stored in, so that is right.
+     What must NOT happen is a skill the sheet cannot match: anything not in the
+     18 is dropped rather than added as a row nothing can roll. */
+  function skillsIn(raw) {
+    var known = (VT.tags && VT.tags.SKILL_ABILITY) || (VT.srd && VT.srd.SKILL_ABILITY) || null;
+    return listOf(raw).filter(function (sk) {
+      return !known || Object.prototype.hasOwnProperty.call(known, sk);
+    });
   }
 
   /* ---- am I proficient with this? -------------------------------------- */
@@ -283,6 +304,10 @@
     actor.weaponProf = out.weapons;
     actor.langProf = merged(out.languages, actor.langProf);
     actor.langChoices = out.languageChoices;
+    /* Skills already exist on every character, so this MERGES rather than
+       replaces - a hand-toggled proficiency must not be thrown away by a
+       backfill that only meant to add the race's. */
+    actor.skillProf = merged(out.skills, actor.skillProf);
     return actor;
   }
 
@@ -299,6 +324,7 @@
     ARMOUR_KINDS: ARMOUR_KINDS, WEAPON_KINDS: WEAPON_KINDS,
     backfill: backfill,
     clean: clean, listOf: listOf, choicesIn: choicesIn, gather: gather,
+    skillsIn: skillsIn,
     weaponOk: weaponOk, armourOk: armourOk, armourWeight: armourWeight,
     armourPenalty: armourPenalty,
     hindersAbility: hindersAbility, hindersSkill: hindersSkill,

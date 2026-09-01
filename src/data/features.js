@@ -489,9 +489,19 @@
   }
 
   /* ---- derived numbers the sheet asks for ------------------------------- */
+  /* A hand-set flat bonus on one skill, for everything the books grant that
+     nothing here models - a feat, an item's +5 to one skill, a DM's ruling.
+     Added on top of whatever proficiency works out to, never instead of it, so
+     the two stay independent and a level-up recomputes one without touching
+     the other. */
+  function skillExtra(actor, skill) {
+    var b = actor && actor.skillBonus;
+    return (b && Number(b[skill])) || 0;
+  }
+
   function skillMod(actor, skill) {
     var abil = SRD.SKILL_ABILITY[skill];
-    var base = VT.actor.abilityMod(actor, abil);
+    var base = VT.actor.abilityMod(actor, abil) + skillExtra(actor, skill);
     var prof = VT.actor.prof(actor);
     if ((actor.expertise || []).indexOf(skill) >= 0) return base + prof * 2;
     if ((actor.skillProf || []).indexOf(skill) >= 0) return base + prof;
@@ -500,10 +510,12 @@
   }
 
   function skillSource(actor, skill) {
-    if ((actor.expertise || []).indexOf(skill) >= 0) return 'expertise';
-    if ((actor.skillProf || []).indexOf(skill) >= 0) return 'proficient';
-    if (actor.jackOfAllTrades) return 'jack of all trades';
-    return '';
+    var extra = skillExtra(actor, skill);
+    var tail = extra ? ' · ' + (extra > 0 ? '+' : '') + extra + ' by hand' : '';
+    if ((actor.expertise || []).indexOf(skill) >= 0) return 'expertise' + tail;
+    if ((actor.skillProf || []).indexOf(skill) >= 0) return 'proficient' + tail;
+    if (actor.jackOfAllTrades) return 'jack of all trades' + tail;
+    return tail ? tail.replace(/^ · /, '') : '';
   }
 
   function saveMod(actor, ability) {
@@ -561,7 +573,7 @@
   VT.features = {
     EFFECTS: EFFECTS, apply: apply, slotsFor: slotsFor,
     casterLevels: casterLevels, slotsForCasterLevel: slotsForCasterLevel,
-    skillMod: skillMod, skillSource: skillSource, saveMod: saveMod,
+    skillMod: skillMod, skillSource: skillSource, skillExtra: skillExtra, saveMod: saveMod,
     spend: spend, restore: restore, rest: rest, slotsLeft: slotsLeft, pactLeft: pactLeft,
     bardicDie: bardicDie, martialArtsDie: martialArtsDie, sneakDice: sneakDice,
     covered: Object.keys(EFFECTS).length

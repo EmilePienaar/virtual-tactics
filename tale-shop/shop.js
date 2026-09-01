@@ -292,7 +292,8 @@
                  ? 'Took ' + want + ' × ' + good.name
                  : 'Bought ' + want + ' × ' + good.name + ' — pay ' + COIN.format(total, sys()),
                loot: SHOPS.lootCode({ from: shop.name,
-                 items: [{ name: good.name, qty: want, note: good.note || '' }] }) });
+                 items: [{ name: good.name, source: good.source || null,
+                           qty: want, note: good.note || '' }] }) });
     postChat(line);
   }
 

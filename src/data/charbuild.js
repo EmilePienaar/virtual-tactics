@@ -295,13 +295,22 @@
       : [];
 
     /* Skills chosen on the class step live in the choice tree; skills chosen
-       anywhere else (a background, an edit by hand) come in on skillProf. */
+       anywhere else (an edit by hand) come in on skillProf. The ones a RACE or
+       BACKGROUND simply grants are neither, and used to be dropped on the
+       floor - an Elf's Perception and a background's two skills never reached
+       the sheet. They are gathered below, with the rest of the proficiencies. */
     a.skillProf = (c.skillProf || []).slice();
     if (VT.choices && c.picks) {
       VT.choices.chosenSkills({ classes: a.classes, picks: c.picks }).forEach(function (sk) {
         if (a.skillProf.indexOf(sk) < 0) a.skillProf.push(sk);
       });
     }
+
+    /* A flat per-skill bonus the player sets by hand, for everything the books
+       grant that nothing here models - a feat, a magic item's +5 to one skill,
+       a DM's ruling. Kept separate from proficiency so a level-up recomputes
+       the proficiency and leaves the hand-set number alone. */
+    a.skillBonus = U.clone(c.skillBonus || {});
 
     /* Tool proficiencies: the fixed grants from the class you started as, plus
        whatever was chosen for the "one of your choice" ones. */
@@ -332,6 +341,11 @@
          ft." - not a list. Two meanings on one key is how a statblock ends up
          with half a sentence in it. */
       a.langProf = pr.languages;
+      /* Race and background skills, merged in beside the class's choices. */
+      pr.skills.forEach(function (sk) {
+        if (a.skillProf.indexOf(sk) < 0) a.skillProf.push(sk);
+      });
+      a.skillChoices = pr.skillChoices;
       /* "Two languages of your choice" has nothing to resolve to, so it is
          carried as a count and the sheet asks for the answer. */
       a.langChoices = Math.max(0, pr.languageChoices - (c.langProf || []).length);
@@ -498,6 +512,7 @@
       weapons: (c.weapons || []).map(ref),
       spells: (c.spells || []).map(ref),
       skillProf: (c.skillProf || []).slice(),
+      skillBonus: U.clone(c.skillBonus || {}),
       toolProf: (c.toolProf || []).slice(),
       armorProf: (c.armorProf || []).slice(),
       weaponProf: (c.weaponProf || []).slice(),
@@ -536,6 +551,7 @@
       classes: classes,
       picks: U.clone(refs.picks || {}),
       skillProf: (refs.skillProf || []).slice(),
+      skillBonus: U.clone(refs.skillBonus || {}),
       toolProf: (refs.toolProf || []).slice(),
       armorProf: (refs.armorProf || []).slice(),
       weaponProf: (refs.weaponProf || []).slice(),
@@ -637,6 +653,7 @@
     r.choices.name = actor.name;
     r.choices.level = totalLevelOf(r.choices);
     r.choices.skillProf = (actor.skillProf || refs.skillProf || []).slice();
+    r.choices.skillBonus = U.clone(actor.skillBonus || refs.skillBonus || {});
     r.choices.toolProf = (actor.toolProf || refs.toolProf || []).slice();
     /* Carried the same way tools are: the merged list goes back in as the
        hand-added set, so a proficiency granted on the Edit tab survives, and

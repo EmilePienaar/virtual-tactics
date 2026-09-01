@@ -284,6 +284,10 @@
       .map(function (i) {
         var o = { name: String(i.name), qty: Math.max(1, i.qty | 0) || 1 };
         if (i.note) o.note = String(i.note);
+        /* Which printing it was. Two fields, and it is the difference between
+           the sheet resolving the item back into something wearable with its
+           own description and it arriving as a bare line of text. */
+        if (i.source) o.source = String(i.source);
         /* A forged or magic item carries its own record, so it arrives on the
            other sheet as the thing it is rather than a name in a list - with
            its AC, its resistances and whatever it sets. Only sent when there

@@ -455,6 +455,52 @@ automatically failed.
 
 ---
 
+## The bundled SRD, and not loading it twice
+
+The apps read a data set the user supplies, and until now that meant a fresh
+install did nothing at all until someone pointed it at a folder. The free rules
+are the one set that may be shared, so they ship in `srd/` beside the app - the
+second deliberate exception to *never bundle game content*, and a narrower one
+than `homebrew/`.
+
+It is a **floor, never a ceiling**. `loadAll()` layers it in last, after the
+user's own source and their homebrew, with de-duplication on. Someone whose data
+set already has a Fireball keeps theirs; someone whose does not gets the SRD's.
+
+### Two identity keys, for two different questions
+
+`add()` gained de-duplication, which needs to know when two records are the same
+thing. There are two answers and both are needed:
+
+- **`kind|name|source`** - the strict key. The 2014 and 2024 Fighter are both
+  called "Fighter" and are genuinely different classes; collapsing them would
+  rob a character of half their features. Only an exact repeat is a duplicate.
+- **`kind|name`** - the loose key, used *only* by the SRD layer. The bundled SRD
+  exists so that someone with no data has a Fireball. Someone who already has
+  one, from any book, does not need the SRD's as well - and the strict key would
+  put "Fireball (PHB)" and "Fireball (SRD)" side by side in every picker, which
+  is precisely the duplication this is meant to prevent.
+
+5etools stores a race's default subrace with **no name at all**, so those are
+keyed by the race they belong to. Keyed by name they would all collide with each
+other and only the first race would keep its ability bonuses - which is the same
+trap `baseSubrace` exists to work around.
+
+The primary load does **not** de-duplicate. It starts from an empty compendium
+and should faithfully contain whatever the source contains; suppressing records
+there would be second-guessing the user's own data.
+
+### Shipping content into it
+
+`srd/index.json` maps a record kind to its files, and the build copies exactly
+what is listed, failing loudly if a listed file is missing - the same check
+`homebrew/` gets, for the same reason: a symbiote fetching a file that is not
+there fails silently at the table, and the build is the last place to catch it.
+
+The folder ships **empty** from a source checkout. See `srd/README.md`.
+
+---
+
 ## Importing a converted supplement
 
 `tools/import-guide.js` turns a fan supplement's plain text into the **same
@@ -928,6 +974,118 @@ were implemented; three more were permanent and missing (Fast Movement, Superior
 Mobility, Roving / Deft Explorer). The other twelve - Bladesong, Dread Ambusher,
 Blade Flourish, Drunken Technique - are *activated*, and applying them passively
 would be wrong, so they are deliberately left out rather than forgotten.
+
+---
+
+## A render must not eat what you are typing
+
+`render()` throws the whole view away and builds it again. That is fine for a
+panel of buttons and fatal for a text field: anything that renders while
+someone is typing takes the focus and the caret with it, and the next keystroke
+lands nowhere. In TaleSpire the Edit tab was losing focus after **every single
+character**.
+
+The sheet's own code was not the culprit, which is what made it hard to see -
+no input handler calls `render()`. Inside TaleSpire the sheet is not the only
+thing that can cause one: a linked mini's hit points changing, a client joining
+the board, the GM polling the table. Any of those, arriving between two
+keystrokes, is enough.
+
+Two fixes, and the second is the one that matters:
+
+1. The renders that had no business firing were narrowed. A creature being
+   removed only redraws the Sheet tab, which is the only tab that shows it; a
+   client joining no longer redraws the Edit tab, where the only thing it would
+   change is the tab strip.
+2. **The rebuild was made survivable.** `render()` notes which field had focus
+   and where the caret sat, and puts both back afterwards. Fields opt in with a
+   `data-k` attribute, a key stable across renders; anything without one behaves
+   exactly as before.
+
+The second is deliberately the load-bearing one. Chasing every trigger in an
+environment we cannot step through is a losing game - a new TaleSpire event, or
+a new feature that renders on a timer, would reopen the bug. Making the rebuild
+non-destructive closes the whole class of it.
+
+Two fields needed more than focus. A number field that rendered on every
+keystroke would still fight the caret, so the skill-bonus input updates the
+total beside it *in place* and does not render at all. And the Tale Shop paste
+box now keeps its text on `S` rather than in a local, so a render arriving
+mid-paste does not empty it - the same reason `hpAmount` and `coinEntry` have
+always lived there.
+
+---
+
+## Skills come from three places, not one
+
+Skill proficiency was read from the class choice tree and from hand edits, and
+that is two of the three. A race that simply grants Perception and a background
+that simply grants Survival and Nature were **dropped on the floor** - the data
+was right there in the record, and nothing looked at it.
+
+They are gathered in `proficiency.gather()` now, beside armour and weapons,
+because they are written in exactly the same shape the rest of that file already
+reads: `{"survival": true, "nature": true}`. A `choose` block is counted as an
+outstanding choice rather than invented, the same as languages, and the sheet
+says how many are still to pick. Anything that is not one of the 18 skills is
+dropped rather than added as a row nothing can roll.
+
+### And a flat bonus you set yourself
+
+The Edit tab has a Skills card: one pip per skill that cycles *nothing to
+proficient to expertise to nothing*, and a number beside it.
+
+That number is `skillBonus`, a flat per-skill modifier for everything the books
+grant that nothing here models - a feat, an item's +5 to one skill, a DM's
+ruling. It is stored apart from proficiency on purpose, so a level-up recomputes
+the proficiency and leaves the hand-set number exactly as it was. Both survive
+re-derivation.
+
+---
+
+## An item has to arrive as an item
+
+Buying something in Tale Shop put it in the player's bag and there it sat: no
+equip button, no description, nothing to click. It was a name and a quantity.
+
+The cause is that a shop's stock is not item records. `goodFromItem` keeps a
+name, a price and a note, because a shop is broadcast between clients and has to
+fit TaleSpire's 500-character messages - carrying full records would blow that
+budget many times over. The loot code could always carry a record (`i.item`, and
+Shopsmith's forged items use it), but a shop purchase had nothing to put there.
+
+So the shop now sends the one extra field that makes the item recoverable: its
+**printing**. `{name, source, qty, note}` is four fields instead of three, and
+it is the difference between a line of text and a thing you can wear.
+
+`acceptGrant` takes three routes, in order of how much it was told:
+
+1. the code carried a whole record - a forged or magic item
+2. the name resolves in the loaded compendium - any shop purchase
+3. neither, so it stays a line of text, which is the honest answer for a player
+   with no data connected
+
+Route 2 was the missing one.
+
+### Repairing what is already in the bag
+
+Everything bought before this is still a bare name, and re-buying it is not a
+fix anyone should have to think of. `gear.reconcile()` walks the inventory
+whenever a data source finishes connecting and upgrades what it can resolve.
+
+Deliberately additive: it fills in `gear`, `desc`, `fx` and `rarity` and touches
+nothing else - never the name, never the quantity, never the note, and never an
+entry that already has gear. A player's hand-written "bag of rocks" that happens
+to share a name with a real item gains a description and loses nothing.
+
+### Reading what the thing does
+
+Inventory rows fold open to the item's own words, exactly as spells do on the
+Sheet tab. The text is stored on the entry rather than looked up, because the
+sheet has to work for a player with no data connected - something bought on one
+machine should still be readable on another. It is capped at 700 characters,
+because a saved character rides in symbiote storage and a few magic items with
+full text would otherwise be most of the blob.
 
 ---
 

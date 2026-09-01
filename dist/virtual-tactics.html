@@ -4788,9 +4788,19 @@ input[type=range]{width:100%;accent-color:var(--gold)}
   }
 
   /* ---- derived numbers the sheet asks for ------------------------------- */
+  /* A hand-set flat bonus on one skill, for everything the books grant that
+     nothing here models - a feat, an item's +5 to one skill, a DM's ruling.
+     Added on top of whatever proficiency works out to, never instead of it, so
+     the two stay independent and a level-up recomputes one without touching
+     the other. */
+  function skillExtra(actor, skill) {
+    var b = actor && actor.skillBonus;
+    return (b && Number(b[skill])) || 0;
+  }
+
   function skillMod(actor, skill) {
     var abil = SRD.SKILL_ABILITY[skill];
-    var base = VT.actor.abilityMod(actor, abil);
+    var base = VT.actor.abilityMod(actor, abil) + skillExtra(actor, skill);
     var prof = VT.actor.prof(actor);
     if ((actor.expertise || []).indexOf(skill) >= 0) return base + prof * 2;
     if ((actor.skillProf || []).indexOf(skill) >= 0) return base + prof;
@@ -4799,10 +4809,12 @@ input[type=range]{width:100%;accent-color:var(--gold)}
   }
 
   function skillSource(actor, skill) {
-    if ((actor.expertise || []).indexOf(skill) >= 0) return 'expertise';
-    if ((actor.skillProf || []).indexOf(skill) >= 0) return 'proficient';
-    if (actor.jackOfAllTrades) return 'jack of all trades';
-    return '';
+    var extra = skillExtra(actor, skill);
+    var tail = extra ? ' · ' + (extra > 0 ? '+' : '') + extra + ' by hand' : '';
+    if ((actor.expertise || []).indexOf(skill) >= 0) return 'expertise' + tail;
+    if ((actor.skillProf || []).indexOf(skill) >= 0) return 'proficient' + tail;
+    if (actor.jackOfAllTrades) return 'jack of all trades' + tail;
+    return tail ? tail.replace(/^ · /, '') : '';
   }
 
   function saveMod(actor, ability) {
@@ -4860,7 +4872,7 @@ input[type=range]{width:100%;accent-color:var(--gold)}
   VT.features = {
     EFFECTS: EFFECTS, apply: apply, slotsFor: slotsFor,
     casterLevels: casterLevels, slotsForCasterLevel: slotsForCasterLevel,
-    skillMod: skillMod, skillSource: skillSource, saveMod: saveMod,
+    skillMod: skillMod, skillSource: skillSource, skillExtra: skillExtra, saveMod: saveMod,
     spend: spend, restore: restore, rest: rest, slotsLeft: slotsLeft, pactLeft: pactLeft,
     bardicDie: bardicDie, martialArtsDie: martialArtsDie, sneakDice: sneakDice,
     covered: Object.keys(EFFECTS).length
@@ -6505,6 +6517,24 @@ input[type=range]{width:100%;accent-color:var(--gold)}
     return actor;
   }
 
+  /* The item's own words, kept on the entry so the sheet can show them.
+
+     Kept rather than looked up because the sheet has to work for a player with
+     no data connected: an item bought from the shop and collected on a laptop
+     with no 5etools folder should still be readable. Capped, because a saved
+     character rides in symbiote storage and a few magic items with full text
+     would otherwise be most of the blob. */
+  var DESC_CAP = 700;
+
+  function describeItem(item) {
+    if (!item || !VT.tags || !VT.tags.toText) return '';
+    var text = '';
+    try { text = VT.tags.toText(item.entries || []) || ''; } catch (e) { return ''; }
+    text = String(text).trim();
+    if (!text) return '';
+    return text.length > DESC_CAP ? text.slice(0, DESC_CAP - 1).trim() + '…' : text;
+  }
+
   /* Put an item into the bag, as gear when it is wearable. */
   function add(actor, item, opts) {
     opts = opts || {};
@@ -6517,15 +6547,54 @@ input[type=range]{width:100%;accent-color:var(--gold)}
       gear: g || undefined,
       equipped: g ? !!opts.equipped : undefined
     };
+    if (item.source) entry.source = item.source;
+    if (item.rarity && item.rarity !== 'none') entry.rarity = item.rarity;
+    var desc = describeItem(item);
+    if (desc) entry.desc = desc;
     if (VT.itemfx) VT.itemfx.tag(entry, item);
     actor.inventory.push(entry);
     if (entry.equipped) equip(actor, entry);
     return entry;
   }
 
+  /* Upgrade bare inventory entries once there is data to resolve them against.
+
+     An item bought from a shop arrives as a name and a printing, and before
+     this it stayed a name forever: no equip button, no description, no
+     effects. Anything already sitting in a player's bag from before is in the
+     same state, so this runs over the whole inventory whenever a data source
+     finishes connecting.
+
+     Deliberately additive. It fills in `gear`, `desc`, `fx` and `rarity` and
+     touches nothing else - never the name, never the quantity, never the note,
+     and never an entry that already has gear. A player's hand-written "bag of
+     rocks" that happens to share a name with a real item gains a description
+     and loses nothing. Returns how many it managed to upgrade. */
+  function reconcile(actor) {
+    if (!actor || !VT.fivetools || !VT.fivetools.loaded || !VT.fivetools.byName) return 0;
+    var fixed = 0;
+    entries(actor).forEach(function (e) {
+      if (!e || !e.name) return;
+      if (e.gear || e.desc || e.fx) return;             /* already resolved */
+      var rec = VT.fivetools.byName('item', e.name, e.source || null) ||
+                VT.fivetools.byName('item', e.name, null);
+      if (!rec) return;
+      var g = fromItem(rec);
+      if (g) { e.gear = g; if (e.equipped == null) e.equipped = false; }
+      var desc = describeItem(rec);
+      if (desc) e.desc = desc;
+      if (rec.source && !e.source) e.source = rec.source;
+      if (rec.rarity && rec.rarity !== 'none' && !e.rarity) e.rarity = rec.rarity;
+      if (VT.itemfx) VT.itemfx.tag(e, rec);
+      fixed++;
+    });
+    if (fixed) recompute(actor);
+    return fixed;
+  }
+
   VT.gear = {
-    slotOf: slotOf, fromItem: fromItem, add: add,
-    armour: armour, shield: shield,
+    slotOf: slotOf, fromItem: fromItem, add: add, reconcile: reconcile,
+    armour: armour, shield: shield, describeItem: describeItem,
     equip: equip, unequip: unequip, toggle: toggle,
     recompute: recompute,
     stealthDisadvantage: stealthDisadvantage, speedPenalty: speedPenalty,
@@ -6648,11 +6717,12 @@ input[type=range]{width:100%;accent-color:var(--gold)}
      multiclass.proficiencies() already works out. Race and background are read
      here because nothing else does.
 
-     Returns {armor, weapons, languages, languageChoices}. Tools stay where
-     they are - choices.js already reads them out of prose, which is a harder
-     job than this one and not worth duplicating. */
+     Returns {armor, weapons, skills, languages, languageChoices, skillChoices}.
+     Tools stay where they are - choices.js already reads them out of prose,
+     which is a harder job than this one and not worth duplicating. */
   function gather(c) {
-    var out = { armor: [], weapons: [], languages: [], languageChoices: 0 };
+    var out = { armor: [], weapons: [], skills: [], languages: [],
+                languageChoices: 0, skillChoices: 0 };
     if (!c) return out;
 
     if (VT.multiclass && c.classes && c.classes.length) {
@@ -6661,12 +6731,20 @@ input[type=range]{width:100%;accent-color:var(--gold)}
       out.weapons = listOf(mc.weapons);
     }
 
+    /* Skills from race and background. The class side is a CHOICE and is made
+       on the choice tree, so it is not gathered here - but a race that simply
+       grants Perception, and a background that simply grants two skills, were
+       being dropped entirely. They are written as a map, {"survival": true,
+       "nature": true}, which is the same shape as the rest of this file's
+       input, so it costs one more line to read them. */
     [c.race, c.subrace, c.background].forEach(function (rec) {
       if (!rec) return;
       merge(out.armor, listOf(rec.armorProficiencies));
       merge(out.weapons, listOf(rec.weaponProficiencies));
       merge(out.languages, listOf(rec.languageProficiencies));
+      merge(out.skills, skillsIn(rec.skillProficiencies));
       out.languageChoices += choicesIn(rec.languageProficiencies);
+      out.skillChoices += choicesIn(rec.skillProficiencies);
     });
 
     /* Everyone speaks the local tongue. The books assume it rather than
@@ -6677,6 +6755,18 @@ input[type=range]{width:100%;accent-color:var(--gold)}
 
   function merge(target, list) {
     list.forEach(function (v) { if (target.indexOf(v) < 0) target.push(v); });
+  }
+
+  /* Skill names have to survive normalisation intact. `clean` strips a trailing
+     " weapons"/" armour", which no skill name ends in, but it also lowercases -
+     and lowercase is exactly the form skillProf is stored in, so that is right.
+     What must NOT happen is a skill the sheet cannot match: anything not in the
+     18 is dropped rather than added as a row nothing can roll. */
+  function skillsIn(raw) {
+    var known = (VT.tags && VT.tags.SKILL_ABILITY) || (VT.srd && VT.srd.SKILL_ABILITY) || null;
+    return listOf(raw).filter(function (sk) {
+      return !known || Object.prototype.hasOwnProperty.call(known, sk);
+    });
   }
 
   /* ---- am I proficient with this? -------------------------------------- */
@@ -6819,6 +6909,10 @@ input[type=range]{width:100%;accent-color:var(--gold)}
     actor.weaponProf = out.weapons;
     actor.langProf = merged(out.languages, actor.langProf);
     actor.langChoices = out.languageChoices;
+    /* Skills already exist on every character, so this MERGES rather than
+       replaces - a hand-toggled proficiency must not be thrown away by a
+       backfill that only meant to add the race's. */
+    actor.skillProf = merged(out.skills, actor.skillProf);
     return actor;
   }
 
@@ -6835,6 +6929,7 @@ input[type=range]{width:100%;accent-color:var(--gold)}
     ARMOUR_KINDS: ARMOUR_KINDS, WEAPON_KINDS: WEAPON_KINDS,
     backfill: backfill,
     clean: clean, listOf: listOf, choicesIn: choicesIn, gather: gather,
+    skillsIn: skillsIn,
     weaponOk: weaponOk, armourOk: armourOk, armourWeight: armourWeight,
     armourPenalty: armourPenalty,
     hindersAbility: hindersAbility, hindersSkill: hindersSkill,

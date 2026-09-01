@@ -43,8 +43,9 @@ Things that work and have been checked against real data.
 - **Equipment** — worn or carried, equip and unequip without deleting, heavy
   armour stealth disadvantage, Strength-requirement speed penalty, and both
   correctly suppressing Unarmored Movement and Fast Movement.
-- **Proficiencies** — languages, tools, weapons and armour, worked out from
-  class, race and background and editable by hand. A weapon you are not trained
+- **Proficiencies** — languages, skills, tools, weapons and armour, worked out
+  from class, race and background and editable by hand, with a flat per-skill
+  bonus you set yourself. A weapon you are not trained
   with loses your proficiency bonus; armour you are not trained with is
   disadvantage on Strength and Dexterity rolls, and no spellcasting.
 - **Magic item effects** — ability scores, AC, saves, resistances, speed, spell
@@ -58,6 +59,12 @@ Things that work and have been checked against real data.
 - **Sync between symbiotes** — framed to fit TaleSpire's 500-character limit.
 - **Treasure** — hoards rolled off the books' tables, coin splitting, loot codes
   that carry full item records.
+- **Items bought in a shop arrive as items** — wearable, attunable, and folding
+  open to their own description. A shop sends a name and a printing; the sheet
+  resolves it back into the record.
+- **A bundled SRD** — shipped in `srd/`, layered under whatever data the user
+  connects, de-duplicated so nothing appears twice. Ships empty from a source
+  checkout; see `srd/README.md`.
 
 ---
 
@@ -97,6 +104,11 @@ It works, but the record carries a `save` and `dc` that are not real.
 are separate; only the second puts it on the sheet. The Edit tab's Tool picker
 grants both.
 
+**The SRD folder ships empty.** The loading, the layering and the
+de-duplication are all in place and tested; the content is not there until
+someone drops a data set into `srd/` and lists it in `srd/index.json`. Until
+then a fresh install still asks for a data source, exactly as before.
+
 **Nothing spends a language.** "Two of your choice" is counted and shown as
 still-to-pick, but nothing stops you adding three, and nothing checks that what
 you typed is a real language. Deliberate — a DM invents languages, and the
@@ -134,6 +146,17 @@ rules at load to scope them under `#sheetHost` — see the design notes. Do not
 anything it computes must be *recomputed from a base*, never accumulated.
 `baseSpeed` and `baseAbilities` exist for exactly this. A version that did
 `speed = speed + bonus` sent a barbarian to zero after two equip cycles.
+
+**Any render destroys focus; that is why `data-k` exists.** `render()` clears
+the view and rebuilds it, so a field being typed into loses its focus and caret
+unless it carries a `data-k` key for `render()` to restore it by. This is not
+theoretical - inside TaleSpire the Edit tab was dropping focus after every
+single character, caused by events the sheet does not control. **A new text
+field in the Edit tab needs a `data-k`**, or it reintroduces the bug for itself.
+
+> A number field that renders on every keystroke fights the caret even with a
+> key, because the value is rewritten underneath it. The skill-bonus input
+> updates its neighbouring total in place and deliberately does not render.
 
 **A monster's `languages` is prose, a character's `langProf` is a list.** They
 are different fields for that reason. Writing a character's language list onto
@@ -181,3 +204,8 @@ a grep after any build change.
 
 The repo is public and contains `homebrew/dark-sun.vthb.json`, a conversion of a
 fan supplement, included by the owner's explicit decision.
+
+`srd/` is the second deliberate exception, and a narrower one: the SRD is the
+freely shareable set, so it may travel with a build where a data folder may not.
+Only SRD-licensed material belongs there. The grep after a build change should
+now expect `homebrew/` and `srd/` and nothing else.

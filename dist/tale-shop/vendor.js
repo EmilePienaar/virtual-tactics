@@ -1474,6 +1474,24 @@
     return actor;
   }
 
+  /* The item's own words, kept on the entry so the sheet can show them.
+
+     Kept rather than looked up because the sheet has to work for a player with
+     no data connected: an item bought from the shop and collected on a laptop
+     with no 5etools folder should still be readable. Capped, because a saved
+     character rides in symbiote storage and a few magic items with full text
+     would otherwise be most of the blob. */
+  var DESC_CAP = 700;
+
+  function describeItem(item) {
+    if (!item || !VT.tags || !VT.tags.toText) return '';
+    var text = '';
+    try { text = VT.tags.toText(item.entries || []) || ''; } catch (e) { return ''; }
+    text = String(text).trim();
+    if (!text) return '';
+    return text.length > DESC_CAP ? text.slice(0, DESC_CAP - 1).trim() + '…' : text;
+  }
+
   /* Put an item into the bag, as gear when it is wearable. */
   function add(actor, item, opts) {
     opts = opts || {};
@@ -1486,15 +1504,54 @@
       gear: g || undefined,
       equipped: g ? !!opts.equipped : undefined
     };
+    if (item.source) entry.source = item.source;
+    if (item.rarity && item.rarity !== 'none') entry.rarity = item.rarity;
+    var desc = describeItem(item);
+    if (desc) entry.desc = desc;
     if (VT.itemfx) VT.itemfx.tag(entry, item);
     actor.inventory.push(entry);
     if (entry.equipped) equip(actor, entry);
     return entry;
   }
 
+  /* Upgrade bare inventory entries once there is data to resolve them against.
+
+     An item bought from a shop arrives as a name and a printing, and before
+     this it stayed a name forever: no equip button, no description, no
+     effects. Anything already sitting in a player's bag from before is in the
+     same state, so this runs over the whole inventory whenever a data source
+     finishes connecting.
+
+     Deliberately additive. It fills in `gear`, `desc`, `fx` and `rarity` and
+     touches nothing else - never the name, never the quantity, never the note,
+     and never an entry that already has gear. A player's hand-written "bag of
+     rocks" that happens to share a name with a real item gains a description
+     and loses nothing. Returns how many it managed to upgrade. */
+  function reconcile(actor) {
+    if (!actor || !VT.fivetools || !VT.fivetools.loaded || !VT.fivetools.byName) return 0;
+    var fixed = 0;
+    entries(actor).forEach(function (e) {
+      if (!e || !e.name) return;
+      if (e.gear || e.desc || e.fx) return;             /* already resolved */
+      var rec = VT.fivetools.byName('item', e.name, e.source || null) ||
+                VT.fivetools.byName('item', e.name, null);
+      if (!rec) return;
+      var g = fromItem(rec);
+      if (g) { e.gear = g; if (e.equipped == null) e.equipped = false; }
+      var desc = describeItem(rec);
+      if (desc) e.desc = desc;
+      if (rec.source && !e.source) e.source = rec.source;
+      if (rec.rarity && rec.rarity !== 'none' && !e.rarity) e.rarity = rec.rarity;
+      if (VT.itemfx) VT.itemfx.tag(e, rec);
+      fixed++;
+    });
+    if (fixed) recompute(actor);
+    return fixed;
+  }
+
   VT.gear = {
-    slotOf: slotOf, fromItem: fromItem, add: add,
-    armour: armour, shield: shield,
+    slotOf: slotOf, fromItem: fromItem, add: add, reconcile: reconcile,
+    armour: armour, shield: shield, describeItem: describeItem,
     equip: equip, unequip: unequip, toggle: toggle,
     recompute: recompute,
     stealthDisadvantage: stealthDisadvantage, speedPenalty: speedPenalty,
@@ -1617,11 +1674,12 @@
      multiclass.proficiencies() already works out. Race and background are read
      here because nothing else does.
 
-     Returns {armor, weapons, languages, languageChoices}. Tools stay where
-     they are - choices.js already reads them out of prose, which is a harder
-     job than this one and not worth duplicating. */
+     Returns {armor, weapons, skills, languages, languageChoices, skillChoices}.
+     Tools stay where they are - choices.js already reads them out of prose,
+     which is a harder job than this one and not worth duplicating. */
   function gather(c) {
-    var out = { armor: [], weapons: [], languages: [], languageChoices: 0 };
+    var out = { armor: [], weapons: [], skills: [], languages: [],
+                languageChoices: 0, skillChoices: 0 };
     if (!c) return out;
 
     if (VT.multiclass && c.classes && c.classes.length) {
@@ -1630,12 +1688,20 @@
       out.weapons = listOf(mc.weapons);
     }
 
+    /* Skills from race and background. The class side is a CHOICE and is made
+       on the choice tree, so it is not gathered here - but a race that simply
+       grants Perception, and a background that simply grants two skills, were
+       being dropped entirely. They are written as a map, {"survival": true,
+       "nature": true}, which is the same shape as the rest of this file's
+       input, so it costs one more line to read them. */
     [c.race, c.subrace, c.background].forEach(function (rec) {
       if (!rec) return;
       merge(out.armor, listOf(rec.armorProficiencies));
       merge(out.weapons, listOf(rec.weaponProficiencies));
       merge(out.languages, listOf(rec.languageProficiencies));
+      merge(out.skills, skillsIn(rec.skillProficiencies));
       out.languageChoices += choicesIn(rec.languageProficiencies);
+      out.skillChoices += choicesIn(rec.skillProficiencies);
     });
 
     /* Everyone speaks the local tongue. The books assume it rather than
@@ -1646,6 +1712,18 @@
 
   function merge(target, list) {
     list.forEach(function (v) { if (target.indexOf(v) < 0) target.push(v); });
+  }
+
+  /* Skill names have to survive normalisation intact. `clean` strips a trailing
+     " weapons"/" armour", which no skill name ends in, but it also lowercases -
+     and lowercase is exactly the form skillProf is stored in, so that is right.
+     What must NOT happen is a skill the sheet cannot match: anything not in the
+     18 is dropped rather than added as a row nothing can roll. */
+  function skillsIn(raw) {
+    var known = (VT.tags && VT.tags.SKILL_ABILITY) || (VT.srd && VT.srd.SKILL_ABILITY) || null;
+    return listOf(raw).filter(function (sk) {
+      return !known || Object.prototype.hasOwnProperty.call(known, sk);
+    });
   }
 
   /* ---- am I proficient with this? -------------------------------------- */
@@ -1788,6 +1866,10 @@
     actor.weaponProf = out.weapons;
     actor.langProf = merged(out.languages, actor.langProf);
     actor.langChoices = out.languageChoices;
+    /* Skills already exist on every character, so this MERGES rather than
+       replaces - a hand-toggled proficiency must not be thrown away by a
+       backfill that only meant to add the race's. */
+    actor.skillProf = merged(out.skills, actor.skillProf);
     return actor;
   }
 
@@ -1804,6 +1886,7 @@
     ARMOUR_KINDS: ARMOUR_KINDS, WEAPON_KINDS: WEAPON_KINDS,
     backfill: backfill,
     clean: clean, listOf: listOf, choicesIn: choicesIn, gather: gather,
+    skillsIn: skillsIn,
     weaponOk: weaponOk, armourOk: armourOk, armourWeight: armourWeight,
     armourPenalty: armourPenalty,
     hindersAbility: hindersAbility, hindersSkill: hindersSkill,
@@ -2628,6 +2711,8 @@
     baseUrl: '',
     files: null,         // path -> File, in folder mode
     db: {},              // kind -> [records]
+    seen: {},            // kind|name|source -> 1, for an exact duplicate
+    seenNames: {},       // kind|name -> 1, for a fallback layer that fills gaps only
     index: {},           // kind -> Map(lowername -> record[])
     sources: {},         // source code -> count
     dirName: null,       // name of a remembered directory handle, if any
@@ -2699,11 +2784,60 @@
   }
 
   /* ---- loading ----------------------------------------------------------- */
-  function add(kind, records, sourceFile, noStats) {
+  /* One record's identity, for telling a genuine duplicate from two records
+     that merely share a name.
+
+     The source is part of it on purpose: the 2014 and 2024 Fighter are both
+     called "Fighter" and are different classes, and collapsing them would rob
+     a character of half their features. Two records with the same name AND the
+     same printing, in the same bucket, are the same thing arriving twice -
+     which is exactly what happens when someone whose own data set already
+     contains the SRD then also gets the bundled copy.
+
+     5etools stores a race's default subrace with no name at all, so those are
+     keyed by the race they belong to instead; keyed by name they would all
+     collide with each other and only the first race would keep its bonuses.
+
+     `loose` drops the source from the key, which is the right question for a
+     FALLBACK layer: the bundled SRD exists so that someone with no data has a
+     Fireball, and someone who already has one - from any book - does not need
+     the SRD's as well. Using the strict key there would put "Fireball (PHB)"
+     and "Fireball (SRD)" side by side in every picker, which is the
+     duplication this is meant to prevent. */
+  function identityOf(kind, r, loose) {
+    if (!r) return null;
+    var name = String(r.name == null ? '' : r.name).toLowerCase();
+    if (!name && kind === 'subrace' && r.raceName) {
+      name = '__base:' + String(r.raceName).toLowerCase();
+    }
+    if (!name) return null;
+    if (loose) return kind + '|' + name;
+    return kind + '|' + name + '|' + String(r.source == null ? '' : r.source).toLowerCase();
+  }
+
+  /* opts.dedupe skips records already present. Off for the primary load, which
+     starts from an empty db and should keep whatever the source contains; on
+     when a second source is LAYERED over the first, where the whole point is
+     that the overlap is not doubled. */
+  function add(kind, records, sourceFile, noStats, opts) {
     if (!records || !records.length) return 0;
     ft.db[kind] = ft.db[kind] || [];
+    var dedupe = !!(opts && opts.dedupe);
+    var kept = 0;
     records.forEach(function (r) {
       if (!r) return;
+      if (dedupe) {
+        var loose = dedupe === 'name';
+        var id = identityOf(kind, r, loose);
+        if (id) {
+          var book = loose ? ft.seenNames : ft.seen;
+          if (book[id]) return;
+          book[id] = 1;
+          /* keep both indexes true, whichever one did the deciding */
+          var other = identityOf(kind, r, !loose);
+          if (other) (loose ? ft.seen : ft.seenNames)[other] = 1;
+        }
+      }
       if (sourceFile && /items-base\.json$/.test(sourceFile)) r.__baseItem = true;
       if (!r.name) {
         /* Almost everything is keyed by name, so a nameless record is noise -
@@ -2718,22 +2852,43 @@
       r.__kind = kind;
       r.__file = sourceFile;
       ft.db[kind].push(r);
+      kept++;
       if (r.source) ft.sources[r.source] = (ft.sources[r.source] || 0) + 1;
     });
-    if (!noStats) ft.stats.records += records.length;
-    return records.length;
+    if (!noStats) ft.stats.records += kept;
+    return kept;
   }
 
-  function ingestFile(kind, json, path) {
+  /* Rebuild the identity index from whatever is in the db right now. Called
+     before layering a second source in, so the layer knows what it is allowed
+     to add. Cheap enough to do outright rather than maintain incrementally,
+     and being derived from the db means it cannot drift out of step with it. */
+  function reindexSeen() {
+    ft.seen = {}; ft.seenNames = {};
+    Object.keys(ft.db).forEach(function (kind) {
+      (ft.db[kind] || []).forEach(function (r) {
+        var id = identityOf(kind, r);
+        if (id) ft.seen[id] = 1;
+        var nm = identityOf(kind, r, true);
+        if (nm) ft.seenNames[nm] = 1;
+      });
+    });
+    return ft.seen;
+  }
+
+  function ingestFile(kind, json, path, dedupe) {
     var keys = ARRAY_KEYS[kind] || [kind];
+    var opts = dedupe ? { dedupe: true } : null;
     var n = 0;
-    keys.forEach(function (k) { if (Array.isArray(json[k])) n += add(kindFor(kind, k), json[k], path); });
+    keys.forEach(function (k) {
+      if (Array.isArray(json[k])) n += add(kindFor(kind, k), json[k], path, false, opts);
+    });
     /* Some files nest everything under a single unexpected key; take arrays of
        objects-with-names as a last resort so odd sources still land. */
     if (!n) {
       Object.keys(json).forEach(function (k) {
         if (Array.isArray(json[k]) && json[k].length && json[k][0] && json[k][0].name) {
-          n += add(kind, json[k], path);
+          n += add(kind, json[k], path, false, opts);
         }
       });
     }
@@ -2828,12 +2983,14 @@
        bundled data/) must not destroy the compendium already in memory. */
     var prev = {
       db: ft.db, index: ft.index, sources: ft.sources, stats: ft.stats,
+      seen: ft.seen, seenNames: ft.seenNames,
       loaded: ft.loaded, mode: ft.mode, baseUrl: ft.baseUrl, dirName: ft.dirName,
       spellLists: ft.spellLists, loot: ft.loot
     };
     function rollback() {
       ft.db = prev.db; ft.index = prev.index; ft.sources = prev.sources;
       ft.stats = prev.stats; ft.loaded = prev.loaded;
+      ft.seen = prev.seen || {}; ft.seenNames = prev.seenNames || {};
       ft.mode = prev.mode; ft.baseUrl = prev.baseUrl; ft.dirName = prev.dirName;
       ft.spellLists = prev.spellLists;
       ft.loot = prev.loot;
@@ -2843,7 +3000,7 @@
       mergeHomebrew();
     }
 
-    ft.db = {}; ft.index = {}; ft.sources = {};
+    ft.db = {}; ft.index = {}; ft.sources = {}; ft.seen = {}; ft.seenNames = {};
     ft.stats = { files: 0, records: 0, failed: [] };
     var report = function (label) { if (onProgress) onProgress({ phase: label, files: ft.stats.files, records: ft.stats.records }); };
 
@@ -2866,6 +3023,11 @@
         if (n) ft.stats.variants = n;
       })
       .then(function () { report('homebrew'); return loadFolderHomebrew(); })
+      /* The bundled SRD goes on LAST and only fills gaps. Someone whose own
+         data set already contains the SRD keeps their copy; someone whose does
+         not gets the free rules underneath it. Either way nothing appears
+         twice. */
+      .then(function () { report('SRD'); return layerBundledSrd(); })
       .then(function () {
         var stats = ft.stats;
         if (!stats.records) {
@@ -2883,6 +3045,73 @@
         return stats;
       })
       .catch(function (e) { rollback(); ft.loading = false; throw e; });
+  }
+
+  /* ---- the bundled SRD ---------------------------------------------------
+     The free rules, shipped beside the app in srd/, so the tools do something
+     useful before anyone has pointed them at a data folder. It is the only
+     game content that travels with a build, and it travels because the SRD is
+     the one set that may be shared - see the note on source books in the
+     README.
+
+     Two rules make this safe to have:
+
+       - It is a FLOOR, never a ceiling. It is layered after everything else
+         with dedupe on, so a record the user's own data already provided wins
+         and the SRD copy is skipped. Load your own PHB and you do not end up
+         with two Fireballs.
+       - Absent is fine. No srd/ folder is the normal state of a source
+         checkout, and everything carries on exactly as before.
+
+     Same shape as a data folder - srd/data/... - so it is read by the ordinary
+     loader rather than a second parser that would drift from it. */
+  function srdBases() {
+    /* A symbiote has srd/ beside it; the Forge is served from builder/ and the
+       single-file build from dist/, so for those it is one level up. */
+    return [appBase() + 'srd/', appBase() + '../srd/'];
+  }
+
+  function layerBundledSrd() {
+    reindexSeen();
+    var prevMode = ft.mode, prevBase = ft.baseUrl, prevFiles = ft.files;
+
+    function tryBase(i) {
+      if (i >= srdBases().length) return Promise.resolve(0);
+      var base = srdBases()[i];
+      return fetch(base + 'index.json', { cache: 'no-cache' })
+        .then(function (r) { if (!r.ok) throw new Error('missing'); return r.json(); })
+        .then(function (idx) { return readSrdFrom(base, idx); })
+        .catch(function () { return tryBase(i + 1); });
+    }
+
+    return tryBase(0)
+      .then(function (n) {
+        ft.mode = prevMode; ft.baseUrl = prevBase; ft.files = prevFiles;
+        if (n) ft.stats.srd = n;
+        return n;
+      })
+      .catch(function () {
+        ft.mode = prevMode; ft.baseUrl = prevBase; ft.files = prevFiles;
+        return 0;
+      });
+  }
+
+  /* srd/index.json is {kind: [file, ...]} relative to the srd/ folder, so a
+     partial SRD - items only, say - is a legitimate thing to ship. */
+  function readSrdFrom(base, idx) {
+    var jobs = [];
+    Object.keys(idx || {}).forEach(function (kind) {
+      (idx[kind] || []).forEach(function (file) { jobs.push({ kind: kind, file: file }); });
+    });
+    if (!jobs.length) return 0;
+
+    var added = 0;
+    return runLimited(jobs, 6, function (job) {
+      return fetch(base + job.file, { cache: 'no-cache' })
+        .then(function (r) { if (!r.ok) throw new Error('missing'); return r.json(); })
+        .then(function (json) { added += ingestFile(job.kind, json, 'srd/' + job.file, 'name'); })
+        .catch(function () {});
+    }).then(function () { return added; });
   }
 
   /* Which classes may learn a given spell is not stored on the spell. It lives
@@ -3556,6 +3785,7 @@
     },
     spellsForClass: spellsForClass, spellListChanges: spellListChanges,
     buildVariants: buildVariants,
+    layerBundledSrd: layerBundledSrd, reindexSeen: reindexSeen, identityOf: identityOf,
     ARRAY_KEYS: ARRAY_KEYS
   });
 })();
@@ -4982,9 +5212,19 @@
   }
 
   /* ---- derived numbers the sheet asks for ------------------------------- */
+  /* A hand-set flat bonus on one skill, for everything the books grant that
+     nothing here models - a feat, an item's +5 to one skill, a DM's ruling.
+     Added on top of whatever proficiency works out to, never instead of it, so
+     the two stay independent and a level-up recomputes one without touching
+     the other. */
+  function skillExtra(actor, skill) {
+    var b = actor && actor.skillBonus;
+    return (b && Number(b[skill])) || 0;
+  }
+
   function skillMod(actor, skill) {
     var abil = SRD.SKILL_ABILITY[skill];
-    var base = VT.actor.abilityMod(actor, abil);
+    var base = VT.actor.abilityMod(actor, abil) + skillExtra(actor, skill);
     var prof = VT.actor.prof(actor);
     if ((actor.expertise || []).indexOf(skill) >= 0) return base + prof * 2;
     if ((actor.skillProf || []).indexOf(skill) >= 0) return base + prof;
@@ -4993,10 +5233,12 @@
   }
 
   function skillSource(actor, skill) {
-    if ((actor.expertise || []).indexOf(skill) >= 0) return 'expertise';
-    if ((actor.skillProf || []).indexOf(skill) >= 0) return 'proficient';
-    if (actor.jackOfAllTrades) return 'jack of all trades';
-    return '';
+    var extra = skillExtra(actor, skill);
+    var tail = extra ? ' · ' + (extra > 0 ? '+' : '') + extra + ' by hand' : '';
+    if ((actor.expertise || []).indexOf(skill) >= 0) return 'expertise' + tail;
+    if ((actor.skillProf || []).indexOf(skill) >= 0) return 'proficient' + tail;
+    if (actor.jackOfAllTrades) return 'jack of all trades' + tail;
+    return tail ? tail.replace(/^ · /, '') : '';
   }
 
   function saveMod(actor, ability) {
@@ -5054,7 +5296,7 @@
   VT.features = {
     EFFECTS: EFFECTS, apply: apply, slotsFor: slotsFor,
     casterLevels: casterLevels, slotsForCasterLevel: slotsForCasterLevel,
-    skillMod: skillMod, skillSource: skillSource, saveMod: saveMod,
+    skillMod: skillMod, skillSource: skillSource, skillExtra: skillExtra, saveMod: saveMod,
     spend: spend, restore: restore, rest: rest, slotsLeft: slotsLeft, pactLeft: pactLeft,
     bardicDie: bardicDie, martialArtsDie: martialArtsDie, sneakDice: sneakDice,
     covered: Object.keys(EFFECTS).length
@@ -6434,6 +6676,10 @@
       .map(function (i) {
         var o = { name: String(i.name), qty: Math.max(1, i.qty | 0) || 1 };
         if (i.note) o.note = String(i.note);
+        /* Which printing it was. Two fields, and it is the difference between
+           the sheet resolving the item back into something wearable with its
+           own description and it arriving as a bare line of text. */
+        if (i.source) o.source = String(i.source);
         /* A forged or magic item carries its own record, so it arrives on the
            other sheet as the thing it is rather than a name in a list - with
            its AC, its resistances and whatever it sets. Only sent when there
@@ -8573,13 +8819,22 @@
       : [];
 
     /* Skills chosen on the class step live in the choice tree; skills chosen
-       anywhere else (a background, an edit by hand) come in on skillProf. */
+       anywhere else (an edit by hand) come in on skillProf. The ones a RACE or
+       BACKGROUND simply grants are neither, and used to be dropped on the
+       floor - an Elf's Perception and a background's two skills never reached
+       the sheet. They are gathered below, with the rest of the proficiencies. */
     a.skillProf = (c.skillProf || []).slice();
     if (VT.choices && c.picks) {
       VT.choices.chosenSkills({ classes: a.classes, picks: c.picks }).forEach(function (sk) {
         if (a.skillProf.indexOf(sk) < 0) a.skillProf.push(sk);
       });
     }
+
+    /* A flat per-skill bonus the player sets by hand, for everything the books
+       grant that nothing here models - a feat, a magic item's +5 to one skill,
+       a DM's ruling. Kept separate from proficiency so a level-up recomputes
+       the proficiency and leaves the hand-set number alone. */
+    a.skillBonus = U.clone(c.skillBonus || {});
 
     /* Tool proficiencies: the fixed grants from the class you started as, plus
        whatever was chosen for the "one of your choice" ones. */
@@ -8610,6 +8865,11 @@
          ft." - not a list. Two meanings on one key is how a statblock ends up
          with half a sentence in it. */
       a.langProf = pr.languages;
+      /* Race and background skills, merged in beside the class's choices. */
+      pr.skills.forEach(function (sk) {
+        if (a.skillProf.indexOf(sk) < 0) a.skillProf.push(sk);
+      });
+      a.skillChoices = pr.skillChoices;
       /* "Two languages of your choice" has nothing to resolve to, so it is
          carried as a count and the sheet asks for the answer. */
       a.langChoices = Math.max(0, pr.languageChoices - (c.langProf || []).length);
@@ -8776,6 +9036,7 @@
       weapons: (c.weapons || []).map(ref),
       spells: (c.spells || []).map(ref),
       skillProf: (c.skillProf || []).slice(),
+      skillBonus: U.clone(c.skillBonus || {}),
       toolProf: (c.toolProf || []).slice(),
       armorProf: (c.armorProf || []).slice(),
       weaponProf: (c.weaponProf || []).slice(),
@@ -8814,6 +9075,7 @@
       classes: classes,
       picks: U.clone(refs.picks || {}),
       skillProf: (refs.skillProf || []).slice(),
+      skillBonus: U.clone(refs.skillBonus || {}),
       toolProf: (refs.toolProf || []).slice(),
       armorProf: (refs.armorProf || []).slice(),
       weaponProf: (refs.weaponProf || []).slice(),
@@ -8915,6 +9177,7 @@
     r.choices.name = actor.name;
     r.choices.level = totalLevelOf(r.choices);
     r.choices.skillProf = (actor.skillProf || refs.skillProf || []).slice();
+    r.choices.skillBonus = U.clone(actor.skillBonus || refs.skillBonus || {});
     r.choices.toolProf = (actor.toolProf || refs.toolProf || []).slice();
     /* Carried the same way tools are: the merged list goes back in as the
        hand-added set, so a proficiency granted on the Edit tab survives, and
