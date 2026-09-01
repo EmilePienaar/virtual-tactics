@@ -44,7 +44,37 @@
     if (!ability) return null;
     return 8 + VT.actor.prof(actor) + mod(actor, ability);
   }
-  function lvl(a) { return a.level || 1; }
+  /* The level a class feature scales on.
+
+     This is the level of the CLASS THAT GRANTED IT, not the character's total.
+     A Rogue 3 / Fighter 5 has eight character levels and 2d6 of Sneak Attack,
+     because Sneak Attack is a rogue feature and they are a third-level rogue.
+     Reading the total gave them 4d6 - and the same mistake inflated Rage uses,
+     Ki points, the Martial Arts and Bardic dice, Sorcery Points, Lay on Hands,
+     Second Wind, superiority dice and Unarmored Movement. Every scaling class
+     feature in the table, for every multiclass character.
+
+     `featureLevel` is set by apply() around each feature and is null the rest
+     of the time, so a single-class character - and anything asking outside the
+     loop - still gets the total, which for them is the same number. Module
+     scope rather than a field on the actor so it cannot be saved by accident,
+     and cleared in a finally so a throwing effect cannot leak it into the next
+     feature. */
+  var featureLevel = null;
+  function lvl(a) { return featureLevel != null ? featureLevel : (a.level || 1); }
+
+  /* How many levels this character has in one named class. Falls back to the
+     total when the class cannot be identified: a feature added by hand, or a
+     character imported as a flat statblock, has no class to look up and the
+     total is the only honest answer. */
+  function classLevelOf(actor, className) {
+    if (!className) return actor.level || 1;
+    var want = String(className).toLowerCase();
+    var hit = (actor.classes || []).filter(function (c) {
+      return String(c.name || '').toLowerCase() === want;
+    })[0];
+    return hit ? (hit.level || 1) : (actor.level || 1);
+  }
   function byLevel(pairs, level) {
     /* pairs: [[minLevel, value], ...] highest matching wins */
     var v = pairs[0][1];
@@ -309,6 +339,11 @@
          different number of uses for a cleric and a paladin. */
       var e = EFFECTS[key + '|' + lowClass.split(' ')[0]] || EFFECTS[key];
 
+      /* Everything below scales on the granting class's level, not the
+         character's total. See lvl(). */
+      featureLevel = f.className ? classLevelOf(actor, f.className) : null;
+      try {
+
       /* Nothing hand-written for this one: try reading an action straight out
          of its printed text. Only attacks and saving-throw effects are written
          predictably enough to be worth it, and featuretext only answers when
@@ -383,6 +418,7 @@
           actor.acWhyAlt = 'Unarmored Defense would give ' + ac + ', so plain AC is used instead.';
         }
       }
+      } finally { featureLevel = null; }
     });
 
     /* Carry forward how much of each resource is already spent. */
@@ -574,6 +610,7 @@
     EFFECTS: EFFECTS, apply: apply, slotsFor: slotsFor,
     casterLevels: casterLevels, slotsForCasterLevel: slotsForCasterLevel,
     skillMod: skillMod, skillSource: skillSource, skillExtra: skillExtra, saveMod: saveMod,
+    classLevelOf: classLevelOf,
     spend: spend, restore: restore, rest: rest, slotsLeft: slotsLeft, pactLeft: pactLeft,
     bardicDie: bardicDie, martialArtsDie: martialArtsDie, sneakDice: sneakDice,
     covered: Object.keys(EFFECTS).length

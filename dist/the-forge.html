@@ -2675,13 +2675,47 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
     if (v == null) return '';
     if (typeof v === 'object') v = v.proficiency || v.name || '';
     var s = String(v);
-    /* pull the name out of a {@item ...} tag if there is one */
-    var tag = s.match(/\{@item\s+([^|}]+)/i);
-    if (tag) s = tag[1];
+    /* Expand every tag to the thing it names, not just {@item}. The 2024 Monk
+       grants "Martial weapons that have the {@filter Light|items|...} property",
+       and a reader that only knew {@item} left the raw tag in the string - which
+       then became a chip on the sheet reading
+       "Martial weapons that have the {@filter light". */
+    s = s.replace(/\{@\w+\s+([^|}]+)(?:\|[^}]*)?\}/g, '$1');
+    /* And a tag that never closes. A character saved before this reader existed
+       stored the string already cut at the first pipe - "... the {@filter light"
+       - so there is no closing brace left for the rule above to match. */
+    s = s.replace(/\{@\w+\s+/g, '').replace(/[{}]/g, '');
     s = s.split('|')[0].trim().toLowerCase();
     s = s.replace(/\s+weapons?$/, '').replace(/\s+armou?r$/, '');
     if (s === 'shield') s = 'shields';
     return s;
+  }
+
+  /* Is this a name we can match against an item, or a sentence?
+
+     Most entries are a kind ("martial") or an item ("hand crossbow"). A few are
+     a CONDITION - "martial weapons that have the light property" - which is a
+     real grant and not something this can evaluate against an item, because the
+     answer depends on the item's properties rather than its name.
+
+     Those are kept and shown, as a note beside the list rather than a chip.
+     Turning one into a chip made it look like a weapon called "martial weapons
+     that have the light"; dropping it silently would lose a proficiency the
+     character really has. Three words is the line: "hand crossbow" and "light
+     hammer" are names, anything longer is prose. */
+  function isProse(name) {
+    if (!name) return false;
+    if (name.split(/\s+/).length > 3) return true;
+    return /\b(that|with|which|any|other|choice)\b/.test(name);
+  }
+
+  /* The prose entries out of a raw list, tidied for reading. */
+  function prose(raw) {
+    var out = [];
+    listAll(raw).forEach(function (v) {
+      if (isProse(v) && out.indexOf(v) < 0) out.push(v);
+    });
+    return out;
   }
 
   /* A list of proficiencies from any of the shapes above, deduplicated.
@@ -2689,6 +2723,12 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
      records; keys whose value is a number are a count of free choices and are
      reported separately by `choicesIn`, not folded in as if they were names. */
   function listOf(raw) {
+    return listAll(raw).filter(function (v) { return !isProse(v); });
+  }
+
+  /* Every entry, prose included. listOf() drops the prose; prose() keeps only
+     it; between them nothing in the source is silently thrown away. */
+  function listAll(raw) {
     var out = [];
     function add(v) {
       var c = clean(v);
@@ -2739,13 +2779,16 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
      which is a harder job than this one and not worth duplicating. */
   function gather(c) {
     var out = { armor: [], weapons: [], skills: [], languages: [],
-                languageChoices: 0, skillChoices: 0 };
+                languageChoices: 0, skillChoices: 0, notes: [] };
     if (!c) return out;
 
     if (VT.multiclass && c.classes && c.classes.length) {
       var mc = VT.multiclass.proficiencies(c.classes);
       out.armor = listOf(mc.armor);
       out.weapons = listOf(mc.weapons);
+      /* Conditional grants the matcher cannot evaluate, kept so the sheet can
+         say what they are rather than pretending they do not exist. */
+      out.notes = prose(mc.weapons).concat(prose(mc.armor));
     }
 
     /* Skills from race and background. The class side is a CHOICE and is made
@@ -2942,11 +2985,41 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
     return out;
   }
 
+  /* Repair a character saved with prose in its proficiency lists.
+
+     Before the reader expanded every tag, a conditional grant was stored as the
+     half-eaten string "martial weapons that have the {@filter light" and shown
+     as a chip. It can never match an item, so it is moved out of the list and
+     into the notes where it belongs. Runs on load and only changes a character
+     that actually has one. */
+  function tidy(actor) {
+    if (!actor) return actor;
+    var moved = [];
+    ['weaponProf', 'armorProf'].forEach(function (key) {
+      if (!Array.isArray(actor[key])) return;
+      var kept = [];
+      actor[key].forEach(function (v) {
+        var c = clean(v);
+        if (!c) return;
+        if (isProse(c)) { if (moved.indexOf(c) < 0) moved.push(c); return; }
+        if (kept.indexOf(c) < 0) kept.push(c);
+      });
+      actor[key] = kept;
+    });
+    if (moved.length) {
+      actor.profNotes = (actor.profNotes || []).slice();
+      moved.forEach(function (m) {
+        if (actor.profNotes.indexOf(m) < 0) actor.profNotes.push(m);
+      });
+    }
+    return actor;
+  }
+
   VT.proficiency = {
     ARMOUR_KINDS: ARMOUR_KINDS, WEAPON_KINDS: WEAPON_KINDS,
-    backfill: backfill,
+    backfill: backfill, tidy: tidy,
     clean: clean, listOf: listOf, choicesIn: choicesIn, gather: gather,
-    skillsIn: skillsIn,
+    skillsIn: skillsIn, prose: prose, isProse: isProse,
     weaponOk: weaponOk, armourOk: armourOk, armourWeight: armourWeight,
     armourPenalty: armourPenalty,
     hindersAbility: hindersAbility, hindersSkill: hindersSkill,
@@ -5847,7 +5920,37 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
     if (!ability) return null;
     return 8 + VT.actor.prof(actor) + mod(actor, ability);
   }
-  function lvl(a) { return a.level || 1; }
+  /* The level a class feature scales on.
+
+     This is the level of the CLASS THAT GRANTED IT, not the character's total.
+     A Rogue 3 / Fighter 5 has eight character levels and 2d6 of Sneak Attack,
+     because Sneak Attack is a rogue feature and they are a third-level rogue.
+     Reading the total gave them 4d6 - and the same mistake inflated Rage uses,
+     Ki points, the Martial Arts and Bardic dice, Sorcery Points, Lay on Hands,
+     Second Wind, superiority dice and Unarmored Movement. Every scaling class
+     feature in the table, for every multiclass character.
+
+     `featureLevel` is set by apply() around each feature and is null the rest
+     of the time, so a single-class character - and anything asking outside the
+     loop - still gets the total, which for them is the same number. Module
+     scope rather than a field on the actor so it cannot be saved by accident,
+     and cleared in a finally so a throwing effect cannot leak it into the next
+     feature. */
+  var featureLevel = null;
+  function lvl(a) { return featureLevel != null ? featureLevel : (a.level || 1); }
+
+  /* How many levels this character has in one named class. Falls back to the
+     total when the class cannot be identified: a feature added by hand, or a
+     character imported as a flat statblock, has no class to look up and the
+     total is the only honest answer. */
+  function classLevelOf(actor, className) {
+    if (!className) return actor.level || 1;
+    var want = String(className).toLowerCase();
+    var hit = (actor.classes || []).filter(function (c) {
+      return String(c.name || '').toLowerCase() === want;
+    })[0];
+    return hit ? (hit.level || 1) : (actor.level || 1);
+  }
   function byLevel(pairs, level) {
     /* pairs: [[minLevel, value], ...] highest matching wins */
     var v = pairs[0][1];
@@ -6112,6 +6215,11 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
          different number of uses for a cleric and a paladin. */
       var e = EFFECTS[key + '|' + lowClass.split(' ')[0]] || EFFECTS[key];
 
+      /* Everything below scales on the granting class's level, not the
+         character's total. See lvl(). */
+      featureLevel = f.className ? classLevelOf(actor, f.className) : null;
+      try {
+
       /* Nothing hand-written for this one: try reading an action straight out
          of its printed text. Only attacks and saving-throw effects are written
          predictably enough to be worth it, and featuretext only answers when
@@ -6186,6 +6294,7 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
           actor.acWhyAlt = 'Unarmored Defense would give ' + ac + ', so plain AC is used instead.';
         }
       }
+      } finally { featureLevel = null; }
     });
 
     /* Carry forward how much of each resource is already spent. */
@@ -6377,6 +6486,7 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
     EFFECTS: EFFECTS, apply: apply, slotsFor: slotsFor,
     casterLevels: casterLevels, slotsForCasterLevel: slotsForCasterLevel,
     skillMod: skillMod, skillSource: skillSource, skillExtra: skillExtra, saveMod: saveMod,
+    classLevelOf: classLevelOf,
     spend: spend, restore: restore, rest: rest, slotsLeft: slotsLeft, pactLeft: pactLeft,
     bardicDie: bardicDie, martialArtsDie: martialArtsDie, sneakDice: sneakDice,
     covered: Object.keys(EFFECTS).length
@@ -9783,6 +9893,7 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
         if (a.skillProf.indexOf(sk) < 0) a.skillProf.push(sk);
       });
       a.skillChoices = pr.skillChoices;
+      a.profNotes = pr.notes || [];
       /* "Two languages of your choice" has nothing to resolve to, so it is
          carried as a count and the sheet asks for the answer. */
       a.langChoices = Math.max(0, pr.languageChoices - (c.langProf || []).length);
@@ -11465,7 +11576,7 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
     /* Entries saved before proficiencies existed carry no lists. Derive them
        from the build where the compendium can still resolve it, and otherwise
        leave them absent - absent costs nothing, a guess costs attack bonuses. */
-    if (VT.proficiency) VT.proficiency.backfill(a);
+    if (VT.proficiency) { VT.proficiency.backfill(a); VT.proficiency.tidy(a); }
     a.coins = a.coins || VT.coin.emptyPurse();
     a.slotsUsed = a.slotsUsed || {};
     a.used = a.used || {};
@@ -13662,7 +13773,7 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
        out from the build if the compendium can still resolve it; leave them
        absent if it cannot, since an absent list costs nothing and a guessed
        one costs the player their attack bonus. */
-    if (VT.proficiency) VT.proficiency.backfill(a);
+    if (VT.proficiency) { VT.proficiency.backfill(a); VT.proficiency.tidy(a); }
   }
 
   function repairActions(a) {
@@ -15349,6 +15460,17 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
           weapons.indexOf(k) >= 0 ? 'Trained' : 'No training - these attacks lose your proficiency bonus');
       }).concat(specific.map(function (k) { return chip(U.cap(k), true, 'Granted by name'); })),
         weapons.length ? '' : 'nothing - every attack is without your proficiency bonus');
+    }
+
+    /* Grants written as a condition rather than a name - "martial weapons that
+       have the light property". Real, and not something the matcher can decide
+       against an item, so they are said plainly instead of being forced into a
+       chip that reads like a weapon nobody has heard of. */
+    if ((a.profNotes || []).length) {
+      card.appendChild(el('div', { class: 'muted', style: { marginTop: '4px' } }, [
+        'Also: ' + a.profNotes.map(U.cap).join('; ') +
+        '. Add the specific weapons on the Edit tab if you want the bonus counted.'
+      ]));
     }
 
     if (langs.length || a.langChoices) {

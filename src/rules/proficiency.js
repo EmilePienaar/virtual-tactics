@@ -53,13 +53,47 @@
     if (v == null) return '';
     if (typeof v === 'object') v = v.proficiency || v.name || '';
     var s = String(v);
-    /* pull the name out of a {@item ...} tag if there is one */
-    var tag = s.match(/\{@item\s+([^|}]+)/i);
-    if (tag) s = tag[1];
+    /* Expand every tag to the thing it names, not just {@item}. The 2024 Monk
+       grants "Martial weapons that have the {@filter Light|items|...} property",
+       and a reader that only knew {@item} left the raw tag in the string - which
+       then became a chip on the sheet reading
+       "Martial weapons that have the {@filter light". */
+    s = s.replace(/\{@\w+\s+([^|}]+)(?:\|[^}]*)?\}/g, '$1');
+    /* And a tag that never closes. A character saved before this reader existed
+       stored the string already cut at the first pipe - "... the {@filter light"
+       - so there is no closing brace left for the rule above to match. */
+    s = s.replace(/\{@\w+\s+/g, '').replace(/[{}]/g, '');
     s = s.split('|')[0].trim().toLowerCase();
     s = s.replace(/\s+weapons?$/, '').replace(/\s+armou?r$/, '');
     if (s === 'shield') s = 'shields';
     return s;
+  }
+
+  /* Is this a name we can match against an item, or a sentence?
+
+     Most entries are a kind ("martial") or an item ("hand crossbow"). A few are
+     a CONDITION - "martial weapons that have the light property" - which is a
+     real grant and not something this can evaluate against an item, because the
+     answer depends on the item's properties rather than its name.
+
+     Those are kept and shown, as a note beside the list rather than a chip.
+     Turning one into a chip made it look like a weapon called "martial weapons
+     that have the light"; dropping it silently would lose a proficiency the
+     character really has. Three words is the line: "hand crossbow" and "light
+     hammer" are names, anything longer is prose. */
+  function isProse(name) {
+    if (!name) return false;
+    if (name.split(/\s+/).length > 3) return true;
+    return /\b(that|with|which|any|other|choice)\b/.test(name);
+  }
+
+  /* The prose entries out of a raw list, tidied for reading. */
+  function prose(raw) {
+    var out = [];
+    listAll(raw).forEach(function (v) {
+      if (isProse(v) && out.indexOf(v) < 0) out.push(v);
+    });
+    return out;
   }
 
   /* A list of proficiencies from any of the shapes above, deduplicated.
@@ -67,6 +101,12 @@
      records; keys whose value is a number are a count of free choices and are
      reported separately by `choicesIn`, not folded in as if they were names. */
   function listOf(raw) {
+    return listAll(raw).filter(function (v) { return !isProse(v); });
+  }
+
+  /* Every entry, prose included. listOf() drops the prose; prose() keeps only
+     it; between them nothing in the source is silently thrown away. */
+  function listAll(raw) {
     var out = [];
     function add(v) {
       var c = clean(v);
@@ -117,13 +157,16 @@
      which is a harder job than this one and not worth duplicating. */
   function gather(c) {
     var out = { armor: [], weapons: [], skills: [], languages: [],
-                languageChoices: 0, skillChoices: 0 };
+                languageChoices: 0, skillChoices: 0, notes: [] };
     if (!c) return out;
 
     if (VT.multiclass && c.classes && c.classes.length) {
       var mc = VT.multiclass.proficiencies(c.classes);
       out.armor = listOf(mc.armor);
       out.weapons = listOf(mc.weapons);
+      /* Conditional grants the matcher cannot evaluate, kept so the sheet can
+         say what they are rather than pretending they do not exist. */
+      out.notes = prose(mc.weapons).concat(prose(mc.armor));
     }
 
     /* Skills from race and background. The class side is a CHOICE and is made
@@ -320,11 +363,41 @@
     return out;
   }
 
+  /* Repair a character saved with prose in its proficiency lists.
+
+     Before the reader expanded every tag, a conditional grant was stored as the
+     half-eaten string "martial weapons that have the {@filter light" and shown
+     as a chip. It can never match an item, so it is moved out of the list and
+     into the notes where it belongs. Runs on load and only changes a character
+     that actually has one. */
+  function tidy(actor) {
+    if (!actor) return actor;
+    var moved = [];
+    ['weaponProf', 'armorProf'].forEach(function (key) {
+      if (!Array.isArray(actor[key])) return;
+      var kept = [];
+      actor[key].forEach(function (v) {
+        var c = clean(v);
+        if (!c) return;
+        if (isProse(c)) { if (moved.indexOf(c) < 0) moved.push(c); return; }
+        if (kept.indexOf(c) < 0) kept.push(c);
+      });
+      actor[key] = kept;
+    });
+    if (moved.length) {
+      actor.profNotes = (actor.profNotes || []).slice();
+      moved.forEach(function (m) {
+        if (actor.profNotes.indexOf(m) < 0) actor.profNotes.push(m);
+      });
+    }
+    return actor;
+  }
+
   VT.proficiency = {
     ARMOUR_KINDS: ARMOUR_KINDS, WEAPON_KINDS: WEAPON_KINDS,
-    backfill: backfill,
+    backfill: backfill, tidy: tidy,
     clean: clean, listOf: listOf, choicesIn: choicesIn, gather: gather,
-    skillsIn: skillsIn,
+    skillsIn: skillsIn, prose: prose, isProse: isProse,
     weaponOk: weaponOk, armourOk: armourOk, armourWeight: armourWeight,
     armourPenalty: armourPenalty,
     hindersAbility: hindersAbility, hindersSkill: hindersSkill,

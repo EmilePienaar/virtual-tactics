@@ -182,7 +182,7 @@
        out from the build if the compendium can still resolve it; leave them
        absent if it cannot, since an absent list costs nothing and a guessed
        one costs the player their attack bonus. */
-    if (VT.proficiency) VT.proficiency.backfill(a);
+    if (VT.proficiency) { VT.proficiency.backfill(a); VT.proficiency.tidy(a); }
   }
 
   function repairActions(a) {
@@ -1869,6 +1869,17 @@
           weapons.indexOf(k) >= 0 ? 'Trained' : 'No training - these attacks lose your proficiency bonus');
       }).concat(specific.map(function (k) { return chip(U.cap(k), true, 'Granted by name'); })),
         weapons.length ? '' : 'nothing - every attack is without your proficiency bonus');
+    }
+
+    /* Grants written as a condition rather than a name - "martial weapons that
+       have the light property". Real, and not something the matcher can decide
+       against an item, so they are said plainly instead of being forced into a
+       chip that reads like a weapon nobody has heard of. */
+    if ((a.profNotes || []).length) {
+      card.appendChild(el('div', { class: 'muted', style: { marginTop: '4px' } }, [
+        'Also: ' + a.profNotes.map(U.cap).join('; ') +
+        '. Add the specific weapons on the Edit tab if you want the bonus counted.'
+      ]));
     }
 
     if (langs.length || a.langChoices) {

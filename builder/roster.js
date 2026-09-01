@@ -89,7 +89,7 @@
     /* Entries saved before proficiencies existed carry no lists. Derive them
        from the build where the compendium can still resolve it, and otherwise
        leave them absent - absent costs nothing, a guess costs attack bonuses. */
-    if (VT.proficiency) VT.proficiency.backfill(a);
+    if (VT.proficiency) { VT.proficiency.backfill(a); VT.proficiency.tidy(a); }
     a.coins = a.coins || VT.coin.emptyPurse();
     a.slotsUsed = a.slotsUsed || {};
     a.used = a.used || {};

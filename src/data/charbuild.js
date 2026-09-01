@@ -346,6 +346,7 @@
         if (a.skillProf.indexOf(sk) < 0) a.skillProf.push(sk);
       });
       a.skillChoices = pr.skillChoices;
+      a.profNotes = pr.notes || [];
       /* "Two languages of your choice" has nothing to resolve to, so it is
          carried as a count and the sheet asks for the answer. */
       a.langChoices = Math.max(0, pr.languageChoices - (c.langProf || []).length);
