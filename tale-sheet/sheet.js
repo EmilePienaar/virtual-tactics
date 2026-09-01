@@ -27,6 +27,8 @@
     hpAmount: 5,          // survives re-render: you often heal what you just took
     coinEntry: '10 gp',
     lootPaste: '',        // ditto: a pasted code must outlive an interrupting render
+    fold: {},             // which sections are folded shut, by id - saved, so a
+                          // player who closes their spell list keeps it closed
     tracked: {},
     linked: null,          // { id, name, hp:{value,max} }
     postToChat: false,
@@ -155,6 +157,7 @@
       S.chars.forEach(ensurePlayFields);
       S.linked = d.linked || null;
       if (d.shareSheet != null) S.shareSheet = !!d.shareSheet;
+      if (d.fold && typeof d.fold === 'object') S.fold = d.fold;
     }).catch(function (e) {
       TS.debug.log('load failed: ' + (e && e.cause));
     });
@@ -198,7 +201,8 @@
   var saveSoon = U.debounce(function () {
     var payload = JSON.stringify({
       v: 1, chars: S.chars, activeId: S.activeId,
-      postToChat: S.postToChat, linked: S.linked, shareSheet: S.shareSheet
+      postToChat: S.postToChat, linked: S.linked, shareSheet: S.shareSheet,
+      fold: S.fold
     });
     TS.localStorage.campaign.setBlob(payload).catch(function (e) {
       toast('Could not save: ' + (e && e.cause || e), 'err');
@@ -658,7 +662,9 @@
     var spells = (a.actions || []).filter(function (x) { return x.spellLevel != null; });
     var plain = (a.actions || []).filter(function (x) { return x.spellLevel == null; });
 
-    var acts = el('div', { class: 'card' }, [el('h3', {}, ['Actions'])]);
+    var actFold = foldCard('actions', 'Actions - ' + (plain.length +
+      (a.gearActions || []).length + (a.itemActions || []).length));
+    var acts = actFold.body;
     if (plain.length) {
       plain.forEach(function (act) { acts.appendChild(actionRow(a, act)); });
     } else {
@@ -689,7 +695,7 @@
         }
       });
     }
-    view.appendChild(acts);
+    view.appendChild(actFold.card);
 
     var book = spellbookCard(a, spells);
     if (book) view.appendChild(book);
@@ -1111,7 +1117,8 @@
   function spellbookCard(a, spells) {
     if (!spells.length) return null;
 
-    var card = el('div', { class: 'card' }, [el('h3', {}, ['Spells'])]);
+    var fold = foldCard('spells', 'Spells - ' + spells.length);
+    var card = fold.body;
     /* Not a disadvantage but a bar: unfamiliar armour stops spellcasting
        outright. The spells stay listed and rollable - the sheet's job is to
        tell the player, not to hide their character from them. */
@@ -1151,17 +1158,37 @@
     levels.sort(function (x, y) { return x - y; });
 
     levels.forEach(function (lv) {
-      card.appendChild(spellLevelHeader(a, lv));
+      /* Each level folds on its own. A prepared caster reads one level at a
+         time; the rest is scrolling.
+
+         The header stays interactive inside the summary - it carries the slot
+         counter and its +/- buttons - so a click on a button is stopped before
+         it reaches the summary, or spending a slot would also fold the level
+         away underneath the finger that spent it. */
+      var id = 'spells.' + lv;
+      var shut = !!S.fold[id];
+      var body = el('div', { class: 'foldbody' });
+      var head = spellLevelHeader(a, lv);
+      head.addEventListener('click', function (ev) {
+        if (ev.target && ev.target.closest && ev.target.closest('button')) ev.stopPropagation();
+      });
+      var sec = el('details', { class: 'spelllevel', open: shut ? null : true }, [
+        el('summary', {}, [head]),
+        body
+      ]);
+      sec.addEventListener('toggle', function () { S.fold[id] = !sec.open; save(); });
+
       (byLevel[lv] || []).forEach(function (act) {
-        card.appendChild(actionRow(a, act));
+        body.appendChild(actionRow(a, act));
         var sl = S.castAt[act.name] || act.spellLevel;
-        if (lv > 0) card.appendChild(castRow(a, act, sl, VT.upcast.at(act, sl)));
+        if (lv > 0) body.appendChild(castRow(a, act, sl, VT.upcast.at(act, sl)));
       });
       if (!(byLevel[lv] || []).length) {
-        card.appendChild(el('div', { class: 'muted', style: { marginLeft: '6px' } }, [
+        body.appendChild(el('div', { class: 'muted', style: { marginLeft: '6px' } }, [
           'nothing prepared at this level'
         ]));
       }
+      card.appendChild(sec);
     });
 
     /* Warlock pact slots are their own pool on their own timer, so they get
@@ -1173,7 +1200,7 @@
         '  level ' + (pact.slotLevel || 1) + ' · short rest',
         left, pact.count, 'pact'));
     }
-    return card;
+    return fold.card;
   }
 
   /* The head of a level's section: its name, and the slots that pay for it. */
@@ -1230,7 +1257,11 @@
           S.castPact[act.name] = !!o.pact;
           render();
         }
-      }, [(o.pact ? 'P' : String(o.level)) + '\u00b7' + o.left]));
+        /* Just the level. This read "1\u00b73" - first level, three slots left -
+           which is two facts crammed into four characters and looked like a
+           range. How many are left is on the level's own row a few pixels
+           above, and in this button's tooltip. */
+      }, [o.pact ? 'Pact' : U.ord(o.level)]));
     });
     if (shot.note) row.appendChild(el('span', { class: 'sub' }, ['  ' + shot.note]));
     var chosen = opts.filter(function (o) {
@@ -1944,6 +1975,32 @@
       'Taking something off leaves it in your pack. Add and remove items on the Edit tab.'
     ]));
     return card;
+  }
+
+  /* A card that folds shut, and stays that way.
+
+     A long spell list is most of the sheet, and a player who has finished
+     casting for the night wants it out of the way - but a fold that reopens on
+     the next render is worse than none, and this sheet renders constantly. So
+     the open/shut state is kept on S and saved with everything else.
+
+     `<details>` rather than a class toggle, because the browser then handles
+     the keyboard, the marker and the accessibility for free, and the sheet
+     already styles details this way for Skills and Features. */
+  function foldCard(id, title, defaultOpen) {
+    var open = S.fold[id] == null ? defaultOpen !== false : !S.fold[id];
+    var body = el('div', { class: 'foldbody' });
+    var card = el('details', { class: 'card fold', open: open ? true : null }, [
+      el('summary', {}, [title]),
+      body
+    ]);
+    card.addEventListener('toggle', function () {
+      /* stored as "is it SHUT", so a section absent from the map reads as open
+         and a fresh character starts with everything visible */
+      S.fold[id] = !card.open;
+      save();
+    });
+    return { card: card, body: body };
   }
 
   /* The control that opens the reader. One function, so a spell, a feature and

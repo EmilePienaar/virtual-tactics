@@ -111,6 +111,11 @@ It works, but the record carries a `save` and `dc` that are not real.
 are separate; only the second puts it on the sheet. The Edit tab's Tool picker
 grants both.
 
+**`--prune` is narrower than it sounds, on purpose.** It clears only `srd/`,
+which is entirely generated. `homebrew/` is shared between the build and the
+player's own imports, so it is never pruned — an earlier version did, and a
+sandbox test watched it delete a player's supplement.
+
 **A feat's prose does nothing.** Only the structured `ability` field is applied,
 so a feat that grants +1 Constitution raises the score, and Tough's "hit point
 maximum increases by twice your level" does not. The feat is recorded, listed
@@ -210,10 +215,11 @@ remove spells from a list.
 - **Rebuild after any change** to `src/`, `tale-sheet/`, `tale-shop/` or
   `builder/`: `node tools/build-symbiote.js` and `node tools/build-single.js`.
   `dist/` is committed so nobody else needs Node.
-- **Install to TaleSpire** by copying `dist/tale-sheet/*` and
-  `dist/tale-shop/*` over the installed folders — *file by file*, never
-  replacing the folders, because TaleSpire keeps `.localStorage` and `.debug`
-  inside them.
+- **Install to TaleSpire** with `node tools/install-symbiotes.js` (or
+  double-click `install.cmd` on Windows). It copies only what changed and never
+  touches `.localStorage`, `.debug` or a connected `data/` folder. Use `--check`
+  to see what it would do. Do **not** replace the folders by hand: the player's
+  characters live inside them.
 - **Run the battle-map regression** before committing: open `index.html`, roll
   initiative, drive turns, confirm no console errors. It catches shared-module
   breakage that the sheets do not.

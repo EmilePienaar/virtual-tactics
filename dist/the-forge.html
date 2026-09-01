@@ -880,6 +880,43 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
 .btn.sm.read { border-color: var(--gold-dim); color: var(--gold); }
 .btn.sm.read:hover { background: var(--gold-dim); color: #151019; }
 
+/* ---- cards that fold ----
+   A <details> styled to sit beside the ordinary cards rather than beneath
+   them: same panel, same gold uppercase heading, plus the marker the browser
+   gives us for free. The generic `details` rules above are for the standalone
+   Skills and Features blocks; these override them where the two disagree. */
+details.card.fold { padding: 0; border-radius: 6px; margin-bottom: 10px; }
+details.card.fold > summary {
+  padding: 10px; margin: 0;
+  font-family: var(--serif); font-size: 11px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--gold); font-weight: 400;
+  cursor: pointer; list-style: none;
+}
+details.card.fold > summary::-webkit-details-marker { display: none; }
+details.card.fold > summary::before { content: "▸ "; color: var(--gold-dim); }
+details.card.fold[open] > summary::before { content: "▾ "; }
+details.card.fold > summary:hover { background: #1c1a26; }
+details.card.fold > .foldbody { padding: 0 10px 10px; }
+
+/* A spell level inside the spell card. Flatter than a card - it is a section,
+   not a panel - and its summary holds the live slot row, so it gets no padding
+   of its own and the marker sits beside the row. */
+details.spelllevel { border: none; background: none; margin: 0 0 2px; border-radius: 0; }
+details.spelllevel > summary {
+  padding: 0; list-style: none; display: flex; align-items: center; gap: 4px;
+}
+details.spelllevel > summary::-webkit-details-marker { display: none; }
+details.spelllevel > summary::before {
+  content: "▸"; color: var(--gold-dim); font-size: 10px; flex: none;
+}
+details.spelllevel[open] > summary::before { content: "▾"; }
+details.spelllevel > summary .spell-head { flex: 1; margin-top: 0; }
+details.spelllevel > .foldbody { padding: 0 0 4px; }
+
+/* The cast-at buttons now read "1st", "2nd" rather than "1·3", so they need
+   room for a word instead of two characters. */
+.castrow .slotpip { min-width: 30px; }
+
 /* The symbiote sheet, hosted inside the Forge.
 
    sheet.css is written for a panel that owns its window. Rather than editing
@@ -13751,6 +13788,8 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
     hpAmount: 5,          // survives re-render: you often heal what you just took
     coinEntry: '10 gp',
     lootPaste: '',        // ditto: a pasted code must outlive an interrupting render
+    fold: {},             // which sections are folded shut, by id - saved, so a
+                          // player who closes their spell list keeps it closed
     tracked: {},
     linked: null,          // { id, name, hp:{value,max} }
     postToChat: false,
@@ -13879,6 +13918,7 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
       S.chars.forEach(ensurePlayFields);
       S.linked = d.linked || null;
       if (d.shareSheet != null) S.shareSheet = !!d.shareSheet;
+      if (d.fold && typeof d.fold === 'object') S.fold = d.fold;
     }).catch(function (e) {
       TS.debug.log('load failed: ' + (e && e.cause));
     });
@@ -13922,7 +13962,8 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
   var saveSoon = U.debounce(function () {
     var payload = JSON.stringify({
       v: 1, chars: S.chars, activeId: S.activeId,
-      postToChat: S.postToChat, linked: S.linked, shareSheet: S.shareSheet
+      postToChat: S.postToChat, linked: S.linked, shareSheet: S.shareSheet,
+      fold: S.fold
     });
     TS.localStorage.campaign.setBlob(payload).catch(function (e) {
       toast('Could not save: ' + (e && e.cause || e), 'err');
@@ -14382,7 +14423,9 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
     var spells = (a.actions || []).filter(function (x) { return x.spellLevel != null; });
     var plain = (a.actions || []).filter(function (x) { return x.spellLevel == null; });
 
-    var acts = el('div', { class: 'card' }, [el('h3', {}, ['Actions'])]);
+    var actFold = foldCard('actions', 'Actions - ' + (plain.length +
+      (a.gearActions || []).length + (a.itemActions || []).length));
+    var acts = actFold.body;
     if (plain.length) {
       plain.forEach(function (act) { acts.appendChild(actionRow(a, act)); });
     } else {
@@ -14413,7 +14456,7 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
         }
       });
     }
-    view.appendChild(acts);
+    view.appendChild(actFold.card);
 
     var book = spellbookCard(a, spells);
     if (book) view.appendChild(book);
@@ -14835,7 +14878,8 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
   function spellbookCard(a, spells) {
     if (!spells.length) return null;
 
-    var card = el('div', { class: 'card' }, [el('h3', {}, ['Spells'])]);
+    var fold = foldCard('spells', 'Spells - ' + spells.length);
+    var card = fold.body;
     /* Not a disadvantage but a bar: unfamiliar armour stops spellcasting
        outright. The spells stay listed and rollable - the sheet's job is to
        tell the player, not to hide their character from them. */
@@ -14875,17 +14919,37 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
     levels.sort(function (x, y) { return x - y; });
 
     levels.forEach(function (lv) {
-      card.appendChild(spellLevelHeader(a, lv));
+      /* Each level folds on its own. A prepared caster reads one level at a
+         time; the rest is scrolling.
+
+         The header stays interactive inside the summary - it carries the slot
+         counter and its +/- buttons - so a click on a button is stopped before
+         it reaches the summary, or spending a slot would also fold the level
+         away underneath the finger that spent it. */
+      var id = 'spells.' + lv;
+      var shut = !!S.fold[id];
+      var body = el('div', { class: 'foldbody' });
+      var head = spellLevelHeader(a, lv);
+      head.addEventListener('click', function (ev) {
+        if (ev.target && ev.target.closest && ev.target.closest('button')) ev.stopPropagation();
+      });
+      var sec = el('details', { class: 'spelllevel', open: shut ? null : true }, [
+        el('summary', {}, [head]),
+        body
+      ]);
+      sec.addEventListener('toggle', function () { S.fold[id] = !sec.open; save(); });
+
       (byLevel[lv] || []).forEach(function (act) {
-        card.appendChild(actionRow(a, act));
+        body.appendChild(actionRow(a, act));
         var sl = S.castAt[act.name] || act.spellLevel;
-        if (lv > 0) card.appendChild(castRow(a, act, sl, VT.upcast.at(act, sl)));
+        if (lv > 0) body.appendChild(castRow(a, act, sl, VT.upcast.at(act, sl)));
       });
       if (!(byLevel[lv] || []).length) {
-        card.appendChild(el('div', { class: 'muted', style: { marginLeft: '6px' } }, [
+        body.appendChild(el('div', { class: 'muted', style: { marginLeft: '6px' } }, [
           'nothing prepared at this level'
         ]));
       }
+      card.appendChild(sec);
     });
 
     /* Warlock pact slots are their own pool on their own timer, so they get
@@ -14897,7 +14961,7 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
         '  level ' + (pact.slotLevel || 1) + ' · short rest',
         left, pact.count, 'pact'));
     }
-    return card;
+    return fold.card;
   }
 
   /* The head of a level's section: its name, and the slots that pay for it. */
@@ -14954,7 +15018,11 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
           S.castPact[act.name] = !!o.pact;
           render();
         }
-      }, [(o.pact ? 'P' : String(o.level)) + '\u00b7' + o.left]));
+        /* Just the level. This read "1\u00b73" - first level, three slots left -
+           which is two facts crammed into four characters and looked like a
+           range. How many are left is on the level's own row a few pixels
+           above, and in this button's tooltip. */
+      }, [o.pact ? 'Pact' : U.ord(o.level)]));
     });
     if (shot.note) row.appendChild(el('span', { class: 'sub' }, ['  ' + shot.note]));
     var chosen = opts.filter(function (o) {
@@ -15668,6 +15736,32 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
       'Taking something off leaves it in your pack. Add and remove items on the Edit tab.'
     ]));
     return card;
+  }
+
+  /* A card that folds shut, and stays that way.
+
+     A long spell list is most of the sheet, and a player who has finished
+     casting for the night wants it out of the way - but a fold that reopens on
+     the next render is worse than none, and this sheet renders constantly. So
+     the open/shut state is kept on S and saved with everything else.
+
+     `<details>` rather than a class toggle, because the browser then handles
+     the keyboard, the marker and the accessibility for free, and the sheet
+     already styles details this way for Skills and Features. */
+  function foldCard(id, title, defaultOpen) {
+    var open = S.fold[id] == null ? defaultOpen !== false : !S.fold[id];
+    var body = el('div', { class: 'foldbody' });
+    var card = el('details', { class: 'card fold', open: open ? true : null }, [
+      el('summary', {}, [title]),
+      body
+    ]);
+    card.addEventListener('toggle', function () {
+      /* stored as "is it SHUT", so a section absent from the map reads as open
+         and a fresh character starts with everything visible */
+      S.fold[id] = !card.open;
+      save();
+    });
+    return { card: card, body: body };
   }
 
   /* The control that opens the reader. One function, so a spell, a feature and

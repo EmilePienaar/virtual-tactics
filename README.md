@@ -50,8 +50,24 @@ import ones made elsewhere.
 **1. Get the files.** On the GitHub page, click the green **Code** button →
 **Download ZIP**, and unzip it somewhere.
 
-**2. Copy two folders.** Inside `dist/` you'll find `tale-sheet` and `tale-shop`.
-Copy both into your TaleSpire symbiotes folder:
+**2. Run the installer.** Double-click **`install.cmd`** in the folder you just
+unzipped. It finds TaleSpire, copies in whatever has changed, and tells you what
+it did. You need [Node.js](https://nodejs.org) installed; nothing else.
+
+It is safe to run over an existing install, and safe to run again after every
+update — it only replaces files that actually changed, and it never touches your
+saved characters, your 5etools data, or homebrew you imported yourself. To see
+what it *would* do without changing anything:
+
+```
+node tools/install-symbiotes.js --check
+```
+
+<details>
+<summary>Or copy the folders by hand</summary>
+
+Inside `dist/` you'll find `tale-sheet` and `tale-shop`. Copy both into your
+TaleSpire symbiotes folder:
 
 ```
 C:\Users\<your name>\AppData\LocalLow\BouncyRock Entertainment\TaleSpire\Symbiotes\
@@ -60,10 +76,23 @@ C:\Users\<your name>\AppData\LocalLow\BouncyRock Entertainment\TaleSpire\Symbiot
 > Quickest way there: press `Win+R`, paste
 > `%AppData%\..\LocalLow\BouncyRock Entertainment\TaleSpire\Symbiotes`, press Enter.
 
-**3. Add your data.** Copy your 5etools `data` folder *inside* each of those two
-folders, so you end up with `Symbiotes\tale-sheet\data\`. This is the easiest
-option by far — the symbiote finds it on its own, never asks you anything, and
-works the same on Windows, Linux and macOS.
+**Copy the files, not the folders.** If you already have these symbiotes
+installed, replacing the whole folder deletes your saved characters — TaleSpire
+keeps them in a `.localStorage` folder *inside* the symbiote, along with your
+`data` folder and any homebrew. Copying file over file is what the installer
+does for you, and why it exists.
+
+</details>
+
+**3. Add your data — optional.** The symbiotes ship with the SRD, so they work
+out of the box: the free races, classes, spells, items and monsters are already
+there. Connect your own 5etools data only if you want more than that.
+
+To do it, copy your 5etools `data` folder *inside* each of those two folders, so
+you end up with `Symbiotes\tale-sheet\data\`. This is the easiest option by
+far — the symbiote finds it on its own, never asks you anything, and works the
+same on Windows, Linux and macOS. Anything it provides wins over the bundled
+SRD, so nothing appears twice.
 
 *(If you'd rather not duplicate it, open the symbiote's **Setup** tab and use
 **Choose folder & remember…** instead. One click the first time and none after

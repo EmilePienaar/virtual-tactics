@@ -280,3 +280,40 @@ input.num { -moz-appearance: textfield; appearance: textfield; }
    rather than sitting in the row like another toggle. */
 .btn.sm.read { border-color: var(--gold-dim); color: var(--gold); }
 .btn.sm.read:hover { background: var(--gold-dim); color: #151019; }
+
+/* ---- cards that fold ----
+   A <details> styled to sit beside the ordinary cards rather than beneath
+   them: same panel, same gold uppercase heading, plus the marker the browser
+   gives us for free. The generic `details` rules above are for the standalone
+   Skills and Features blocks; these override them where the two disagree. */
+details.card.fold { padding: 0; border-radius: 6px; margin-bottom: 10px; }
+details.card.fold > summary {
+  padding: 10px; margin: 0;
+  font-family: var(--serif); font-size: 11px; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--gold); font-weight: 400;
+  cursor: pointer; list-style: none;
+}
+details.card.fold > summary::-webkit-details-marker { display: none; }
+details.card.fold > summary::before { content: "▸ "; color: var(--gold-dim); }
+details.card.fold[open] > summary::before { content: "▾ "; }
+details.card.fold > summary:hover { background: #1c1a26; }
+details.card.fold > .foldbody { padding: 0 10px 10px; }
+
+/* A spell level inside the spell card. Flatter than a card - it is a section,
+   not a panel - and its summary holds the live slot row, so it gets no padding
+   of its own and the marker sits beside the row. */
+details.spelllevel { border: none; background: none; margin: 0 0 2px; border-radius: 0; }
+details.spelllevel > summary {
+  padding: 0; list-style: none; display: flex; align-items: center; gap: 4px;
+}
+details.spelllevel > summary::-webkit-details-marker { display: none; }
+details.spelllevel > summary::before {
+  content: "▸"; color: var(--gold-dim); font-size: 10px; flex: none;
+}
+details.spelllevel[open] > summary::before { content: "▾"; }
+details.spelllevel > summary .spell-head { flex: 1; margin-top: 0; }
+details.spelllevel > .foldbody { padding: 0 0 4px; }
+
+/* The cast-at buttons now read "1st", "2nd" rather than "1·3", so they need
+   room for a word instead of two characters. */
+.castrow .slotpip { min-width: 30px; }
